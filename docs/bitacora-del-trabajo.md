@@ -454,6 +454,54 @@ de M6".
 
 ---
 
+## Paso 12 – Integración continua (CI) con GitHub Actions
+
+**Qué es:** un *workflow* que GitHub ejecuta solo en cada push o pull request que toque M6 o los
+contratos. Verifica que nada se haya roto, sin depender de que alguien se acuerde de correr los
+tests (RNF-17).
+
+📄 [`.github/workflows/m6-viajes.yml`](../.github/workflows/m6-viajes.yml)
+
+**Qué hace, en dos etapas:**
+
+1. **Tipos, tests y contratos.** Levanta PostgreSQL y RabbitMQ como servicios, con las mismas
+   versiones que `docker-compose.yml`, y corre:
+   - `npm ci`;
+   - `npm run typecheck`;
+   - `npm run contratos:validar`;
+   - `npm test`;
+   - `npm run test:infra`.
+2. **Imagen Docker** (sólo si la etapa 1 pasó):
+   - construye la imagen con el `Dockerfile`;
+   - la arranca y verifica que `/salud` responda;
+   - si el push es a la rama `main`, la publica en GitHub Container Registry como
+     `ghcr.io/facundoros9/m6-viajes:<versión>`, `:sha-<commit>` y `:latest`.
+
+**Detalles:**
+- Si llega un push nuevo a la misma rama, se cancela la corrida anterior (`concurrency`).
+- También se puede correr a mano desde la pestaña **Actions** → "M6 Viajes - CI" → **Run workflow**.
+- El README muestra un *badge* verde o rojo con el estado del último CI.
+
+✅ **Verificación:**
+- El workflow pasó **actionlint**, el validador de workflows de GitHub, sin errores.
+- Se reprodujeron acá los mismos pasos con las mismas imágenes de PostgreSQL y RabbitMQ: tipos y
+  contratos OK, 42 tests unitarios, 47 de integración, y la imagen respondió `/salud`.
+
+⚠️ **Pendiente de confirmar en GitHub:** desde la conexión de Claude con GitHub el workflow no
+aparecía registrado y la API respondía 404. Puede ser que **GitHub Actions esté desactivado** en el
+repositorio o que esa conexión no tenga permiso para ver Actions. Para revisarlo:
+1. Entrar al repo en GitHub → pestaña **Actions**.
+2. Si aparece un botón para habilitar workflows, habilitarlo.
+3. Si no aparece ninguna corrida, ir a **Settings** → **Actions** → **General** → "Allow all
+   actions and reusable workflows" → **Save**, y después **Run workflow** desde la pestaña
+   **Actions**.
+
+**Sobre la rama `main`:** hoy el repo sólo tiene la rama `claude/amazing-ramanujan-h70f8m`, que
+es la rama por defecto. La publicación de la imagen se activa cuando exista `main` y se haga push
+a ella, por ejemplo al mergear un pull request.
+
+---
+
 ## Problemas que aparecieron al probar y cómo se resolvieron
 
 | Síntoma | Causa | Solución |
@@ -475,6 +523,7 @@ de M6".
 
 ```
 grupo-5-dds/
+├── .github/workflows/m6-viajes.yml   # CI: tests, contratos e imagen en cada push
 ├── README.md                         # cómo levantar y probar todo
 ├── contratos/
 │   ├── m6-viajes.openapi.yaml        # API de M6
@@ -508,6 +557,7 @@ grupo-5-dds/
 | RNF-08 Concurrencia | ✅ | Versión + `UPDATE` condicional |
 | RNF-09 Idempotencia (TP2) | ✅ en M6 | `Idempotency-Key`, creación por `asignacionId`, eventos con `idEvento` |
 | RNF-10 Mensajería (TP2) | ✅ | RabbitMQ + outbox, ADR-003 |
+| RNF-17 Automatización (TP2) | ✅ (confirmar en GitHub) | `.github/workflows/m6-viajes.yml` |
 | RNF-13 Resiliencia (TP2) | 🟡 Parcial | Timeouts con M8 y RabbitMQ; eventos que esperan si el broker se cae |
 | RNF-20 Documentación | ✅ | README, docs/, ADRs |
 | RF-6.1 a RF-6.8 | ✅ | Dominio + API |
@@ -518,8 +568,7 @@ grupo-5-dds/
    Grupo 12, y ajustar contratos y código según lo que se acuerde.
 2. **TP2:**
    - pasar la idempotencia a Redis;
-   - agregar health checks y logs estructurados;
-   - automatizar el build y los tests en CI.
+   - agregar health checks y logs estructurados.
 
 ---
 

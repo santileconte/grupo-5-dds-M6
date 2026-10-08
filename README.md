@@ -1,5 +1,7 @@
 # Grupo 5 – M6: Viajes y Ciclo de Vida
 
+[![M6 Viajes - CI](https://github.com/facundoros9/grupo-5-dds/actions/workflows/m6-viajes.yml/badge.svg)](https://github.com/facundoros9/grupo-5-dds/actions/workflows/m6-viajes.yml)
+
 Desarrollo de Software 2026. La consigna describe una plataforma distribuida de movilidad urbana
 bajo demanda con nueve módulos. Al **Grupo 5** le corresponde **M6 – Viajes y Ciclo de Vida**:
 estados del viaje, arribo, inicio, finalización, cancelación y auditoría.
@@ -16,6 +18,7 @@ estados del viaje, arribo, inicio, finalización, cancelación y auditoría.
 | [`docs/catalogo-eventos.md`](docs/catalogo-eventos.md) | Catálogo legible de eventos y convenciones propuestas al consorcio. |
 | [`docs/decisiones/`](docs/decisiones) | Decisiones de arquitectura (ADR). |
 | [`m6-viajes/`](m6-viajes) | Servicio en TypeScript y NestJS. |
+| [`.github/workflows/m6-viajes.yml`](.github/workflows/m6-viajes.yml) | CI: tipos, tests, contratos e imagen Docker en cada push. |
 
 ## Servicio `m6-viajes`
 
