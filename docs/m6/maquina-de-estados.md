@@ -132,6 +132,9 @@ comprobante.
 
 ## Pendientes de acordar con otros grupos
 
+> El seguimiento y los mensajes para cada grupo están en
+> [`docs/acuerdos-con-otros-grupos.md`](../acuerdos-con-otros-grupos.md).
+
 | Con      | Tema                                                                                       |
 |----------|--------------------------------------------------------------------------------------------|
 | M5       | Que la creación del viaje sea por `POST /viajes` (síncrona) y que la devolución al despacho sea por el evento `ViajeCancelado` con `requiereRedespacho = true`. Hace falta `asignacionId` para la idempotencia. |

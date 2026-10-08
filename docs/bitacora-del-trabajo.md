@@ -353,6 +353,41 @@ base (en el log aparece `[PostgreSQL] Conexiones cerradas`).
 
 ---
 
+## Paso 10 – Preparar los acuerdos con los otros grupos
+
+**Qué es:** M6 depende de cómo lo usen los demás módulos. M5 lo crea, M8 valida el QR, M7 cobra
+y M2, M3, M4 y M9 escuchan sus eventos. Lo que definimos en el contrato es sólo una **propuesta**
+hasta que los otros grupos lo acepten.
+
+📄 [`docs/acuerdos-con-otros-grupos.md`](acuerdos-con-otros-grupos.md)
+
+**Qué contiene:**
+- **Tabla de seguimiento** por módulo: grupos a contactar (cada módulo tiene dos
+  implementaciones), prioridad y estado (sin enviar, enviado, en discusión o acordado).
+- **Convenciones comunes** para proponer a todos: formato de errores, `X-Correlation-Id`, exchange
+  de RabbitMQ, routing keys y sobre de eventos.
+- **Una sección por grupo**: qué necesitamos, nuestra propuesta concreta, las preguntas abiertas,
+  un **mensaje listo para copiar y mandar** y un lugar para anotar lo acordado.
+
+**Prioridades:**
+1. M5: cómo se crea el viaje.
+2. M8: cómo se valida el QR.
+3. M1: formato del token. La consigna no le asigna grupo, así que la consulta es para la cátedra.
+4. Grupo 12: la otra implementación de M6, para tener el mismo contrato.
+
+**Cómo usarlo:**
+- mandar los mensajes;
+- ir actualizando la columna "Estado";
+- anotar lo decidido en "Acordado".
+
+Si un acuerdo cambia el contrato, hay que actualizar `contratos/` y el código, y registrarlo en
+esta bitácora.
+
+**Cambio en el flujo de trabajo:** a partir de este paso, los commits y el push los hace el grupo.
+Los comandos están en la sección "Cómo traer los cambios y commitear" más abajo.
+
+---
+
 ## Problemas que aparecieron al probar y cómo se resolvieron
 
 | Síntoma | Causa | Solución |
@@ -379,6 +414,7 @@ grupo-5-dds/
 │   └── eventos/m6-viajes.asyncapi.yaml
 ├── docs/
 │   ├── bitacora-del-trabajo.md       # este documento
+│   ├── acuerdos-con-otros-grupos.md  # propuestas y mensajes para cada grupo
 │   ├── catalogo-eventos.md
 │   ├── m6/maquina-de-estados.md
 │   └── decisiones/                   # ADR-001 (stack) y ADR-002 (persistencia)
@@ -408,11 +444,33 @@ grupo-5-dds/
 
 ## Próximos pasos
 
-1. **Acordar contratos** con M5 (creación del viaje), M8 (validación del QR), M7 (datos para el
-   cargo), M1 (formato del token) y el Grupo 12 (la otra implementación de M6). La lista está en
-   `docs/m6/maquina-de-estados.md`.
+1. **Mandar los mensajes** de `docs/acuerdos-con-otros-grupos.md`, empezando por M5, M8, M1 y el
+   Grupo 12, y ajustar contratos y código según lo que se acuerde.
 2. **TP2:**
    - publicar los eventos en RabbitMQ con el patrón *outbox*;
    - pasar la idempotencia a Redis;
    - agregar health checks y logs estructurados;
    - automatizar el build y los tests en CI.
+
+---
+
+## Cómo traer los cambios y commitear
+
+Los cambios que hace Claude se suben a la rama `claude/amazing-ramanujan-h70f8m`. Para traerlos al
+Codespace, desde la raíz del repo:
+
+```bash
+git pull
+```
+
+Para guardar y subir **cambios propios** (por ejemplo, después de completar un acuerdo):
+
+```bash
+git status                     # ver qué archivos cambiaron
+git add -A                     # preparar todos los cambios
+git commit -m "Describir el cambio en una línea"
+git push
+```
+
+Si `git push` responde que la rama remota tiene cambios nuevos, primero hay que traerlos con
+`git pull` y después repetir `git push`.
