@@ -502,6 +502,75 @@ a ella, por ejemplo al mergear un pull request.
 
 ---
 
+## Paso 13 – `Idempotency-Key` en Redis
+
+**Qué es:** cuando una app reintenta un pedido, por ejemplo porque se le cortó la conexión justo
+después de tocar "finalizar", el header `Idempotency-Key` hace que reciba la misma respuesta sin
+que la acción se ejecute dos veces (RNF-09). Hasta acá esas respuestas vivían en la memoria del
+servicio. Ahora se guardan en **Redis** (RNF-11), una base de datos en memoria muy rápida, pensada
+para datos que vencen solos.
+
+**Qué mejora frente a la versión en memoria:**
+
+| Situación | Antes (memoria) | Ahora (Redis) |
+|---|---|---|
+| Se reinicia el servicio | Se perdían las claves | Siguen ahí (vencen a las 24 h) |
+| Hay varias instancias del servicio | Cada una tenía las suyas | Comparten las mismas |
+| Llegan dos pedidos con la misma clave a la vez | Se podían procesar los dos | El segundo recibe `409 PEDIDO_EN_CURSO` |
+| Misma clave con otro cuerpo | Devolvía la respuesta vieja | `422 CLAVE_IDEMPOTENCIA_REUTILIZADA` |
+
+**Cómo funciona:**
+1. Al llegar un pedido con clave, se **reserva** en Redis de forma atómica (`SET ... NX`). Sólo uno
+   puede reservarla.
+2. Si el pedido sale bien, se guarda la respuesta por 24 horas. Si falla, se libera la clave para
+   que el cliente pueda reintentar.
+3. Si llega otra vez la misma clave, se devuelve la respuesta guardada con el header
+   `Idempotent-Replayed: true`.
+4. **Si Redis se cae**, los pedidos se procesan igual, sin idempotencia, y queda un aviso en el
+   log. Las reglas del viaje (versión y estados) siguen evitando que algo se haga dos veces.
+
+**Qué se agregó:**
+
+| Archivo | Para qué |
+|---|---|
+| `src/comun/idempotencia/` | Interceptor, interfaz del almacén e implementaciones en Redis y en memoria |
+| `docker-compose.yml` | Servicio `redis` |
+| `contratos/m6-viajes.openapi.yaml` | Códigos `PEDIDO_EN_CURSO` y `CLAVE_IDEMPOTENCIA_REUTILIZADA`, y cómo usar `Idempotency-Key` |
+| `.github/workflows/m6-viajes.yml` | Redis como servicio en el CI |
+| `docs/decisiones/ADR-004-idempotencia-redis.md` | La decisión y por qué se sigue procesando si Redis se cae |
+
+**Cambios en la forma de trabajar:**
+- `npm run infra:levantar` ahora levanta PostgreSQL, RabbitMQ **y Redis**.
+- `.env.example` tiene `IDEMPOTENCIA=redis` y `REDIS_URL`. **Hay que volver a copiarlo:**
+  `cp .env.example .env`.
+- Sin Docker: `IDEMPOTENCIA=memoria`.
+
+**Problemas que aparecieron al probar (y quedaron resueltos):**
+- **Los primeros pedidos fallaban con "Stream isn't writeable":** el cliente de Redis rechazaba
+  los comandos que llegaban antes de terminar de conectarse. Ahora esperan la conexión hasta
+  1 segundo.
+- **Aviso de "demasiados listeners":** cada pedido que llegaba mientras Redis conectaba agregaba
+  su propio listener. Ahora todos comparten la misma espera.
+- **Jest tardaba en terminar:** al cerrar, el cliente de Redis esperaba 2 segundos por defecto
+  (`disconnectTimeout`). Se alineó con el timeout configurado.
+
+✅ **Pruebas:**
+- **Tests nuevos:**
+  - de 10 pedidos simultáneos con la misma clave, sólo 1 la reserva;
+  - las claves vencen;
+  - si Redis no existe, falla rápido;
+  - la misma clave con otro cuerpo da 422;
+  - un error no se guarda;
+  - dos inicios simultáneos con la misma clave dan `[200, 409 PEDIDO_EN_CURSO]`;
+  - con Redis caído la API sigue funcionando.
+- **Totales:** 45 unitarios y 56 de integración contra PostgreSQL, RabbitMQ y Redis reales. Toda
+  la suite de la API corre también con Redis.
+- **Prueba manual con todo en contenedores:** se registró un arribo con una `Idempotency-Key` y se
+  **reinició el servicio**. Al repetir el pedido con la misma clave, la respuesta fue la original:
+  `200` con `Idempotent-Replayed: true`.
+
+---
+
 ## Problemas que aparecieron al probar y cómo se resolvieron
 
 | Síntoma | Causa | Solución |
@@ -513,6 +582,7 @@ a ella, por ejemplo al mergear un pull request.
 | **403** `PROHIBIDO` al crear el viaje | Se usó el token de CLIENTE y después el de CONDUCTOR; crear viajes sólo lo puede hacer SERVICIO | Logout y Authorize con el token de **SERVICIO**. |
 | **200** en lugar de 201 al crear | El viaje ya se había creado en un Execute anterior con el mismo `asignacionId` | Es el comportamiento esperado (idempotencia). Para otro viaje, cambiar `solicitudId` y `asignacionId`. |
 | Las consultas SQL "no hacían nada" | Se escribieron en la terminal donde corría el servidor | Abrir otra terminal con **+** y correr `npm run db:consola` ahí. |
+| Los primeros pedidos con `Idempotency-Key` fallaban con "Stream isn't writeable" | El cliente de Redis rechazaba comandos antes de terminar de conectarse | Esperar la conexión hasta 1 s antes de cada comando |
 | RabbitMQ rechazaba al usuario `guest` desde el contenedor del servicio | `guest` sólo puede conectarse desde la misma máquina | En docker compose se crea el usuario `m6` / `m6` |
 | `docker stop` tardaba 10 s y mataba el proceso | Node no cerraba la app al recibir SIGTERM | `app.enableShutdownHooks()` en `main.ts` |
 | GitHub rechazó un push ("Push cannot contain secrets") | Falso positivo: tomó un UUID de ejemplo escrito después de la palabra "token" como si fuera un token de npm | Se reemplazó el ejemplo por `<conductorId>`. |
@@ -533,13 +603,13 @@ grupo-5-dds/
 │   ├── acuerdos-con-otros-grupos.md  # propuestas y mensajes para cada grupo
 │   ├── catalogo-eventos.md
 │   ├── m6/maquina-de-estados.md
-│   └── decisiones/                   # ADR-001 (stack), ADR-002 (persistencia), ADR-003 (eventos)
+│   └── decisiones/                   # ADR-001 stack, 002 persistencia, 003 eventos, 004 idempotencia
 └── m6-viajes/                        # servicio NestJS
     ├── src/                          # código (dominio, aplicación, infraestructura, http, común)
     ├── test/                         # tests de integración
     ├── migraciones/                  # esquema de la base
     ├── Dockerfile                    # imagen del servicio
-    ├── docker-compose.yml            # PostgreSQL + RabbitMQ + servicio
+    ├── docker-compose.yml            # PostgreSQL + RabbitMQ + Redis + servicio
     └── .env.example                  # plantilla de configuración
 ```
 
@@ -555,10 +625,11 @@ grupo-5-dds/
 | RNF-06 Configuración externa | ✅ | `.env` / `.env.example` |
 | RNF-07 Tests unitarios y de integración | ✅ | `npm test`, `npm run test:infra` |
 | RNF-08 Concurrencia | ✅ | Versión + `UPDATE` condicional |
-| RNF-09 Idempotencia (TP2) | ✅ en M6 | `Idempotency-Key`, creación por `asignacionId`, eventos con `idEvento` |
+| RNF-09 Idempotencia (TP2) | ✅ en M6 | `Idempotency-Key` en Redis, creación por `asignacionId`, eventos con `idEvento` |
 | RNF-10 Mensajería (TP2) | ✅ | RabbitMQ + outbox, ADR-003 |
+| RNF-11 Caché y vencimiento (TP2) | ✅ | Redis para `Idempotency-Key`, ADR-004 |
 | RNF-17 Automatización (TP2) | ✅ (confirmar en GitHub) | `.github/workflows/m6-viajes.yml` |
-| RNF-13 Resiliencia (TP2) | 🟡 Parcial | Timeouts con M8 y RabbitMQ; eventos que esperan si el broker se cae |
+| RNF-13 Resiliencia (TP2) | 🟡 Parcial | Timeouts con M8, RabbitMQ y Redis; eventos que esperan si el broker se cae; sin Redis se sigue operando |
 | RNF-20 Documentación | ✅ | README, docs/, ADRs |
 | RF-6.1 a RF-6.8 | ✅ | Dominio + API |
 
@@ -567,8 +638,9 @@ grupo-5-dds/
 1. **Mandar los mensajes** de `docs/acuerdos-con-otros-grupos.md`, empezando por M5, M8, M1 y el
    Grupo 12, y ajustar contratos y código según lo que se acuerde.
 2. **TP2:**
-   - pasar la idempotencia a Redis;
-   - agregar health checks y logs estructurados.
+   - **Salud y diagnóstico (RNF-14):** que `/salud` informe el estado de PostgreSQL, RabbitMQ y
+     Redis, y logs estructurados en JSON con el id de correlación.
+   - Confirmar en GitHub que el CI corre (pestaña **Actions**).
 
 ---
 

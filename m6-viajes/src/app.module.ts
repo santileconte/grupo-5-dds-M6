@@ -4,6 +4,7 @@ import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { AutenticacionGuard } from './comun/autenticacion.guard';
 import { CorrelacionMiddleware } from './comun/correlacion.middleware';
+import { IdempotenciaModule } from './comun/idempotencia/idempotencia.module';
 import { ProblemasFilter } from './comun/problemas.filter';
 import { crearValidacionPipe } from './comun/validacion.pipe';
 import { validarConfiguracion } from './configuracion';
@@ -18,6 +19,7 @@ import { ViajesModule } from './viajes/viajes.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({ secret: config.getOrThrow<string>('JWT_SECRETO') }),
     }),
+    IdempotenciaModule,
     ViajesModule,
   ],
   controllers: [RaizController, SaludController],

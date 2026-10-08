@@ -383,6 +383,46 @@ describe('API de viajes (integración)', () => {
       expect((await eventosDe(v.id)).filter((e) => e.tipo === 'ViajeCancelado')).toHaveLength(1);
     });
 
+    it('la misma Idempotency-Key con otro cuerpo responde 422', async () => {
+      const v = await crearViaje();
+      const clave = randomUUID();
+      await http
+        .post(`/viajes/${v.id}/cancelacion`)
+        .set('Authorization', v.cliente)
+        .set('Idempotency-Key', clave)
+        .send({ motivo: 'CAMBIO_DE_PLANES' })
+        .expect(200);
+      const res = await http
+        .post(`/viajes/${v.id}/cancelacion`)
+        .set('Authorization', v.cliente)
+        .set('Idempotency-Key', clave)
+        .send({ motivo: 'DEMORA_EXCESIVA' })
+        .expect(422);
+      expect(res.body.codigo).toBe('CLAVE_IDEMPOTENCIA_REUTILIZADA');
+    });
+
+    it('un error no se guarda: se puede reintentar con la misma Idempotency-Key', async () => {
+      const v = await crearViaje();
+      const clave = randomUUID();
+      const enviar = (motivo: string) =>
+        http
+          .post(`/viajes/${v.id}/cancelacion`)
+          .set('Authorization', v.cliente)
+          .set('Idempotency-Key', clave)
+          .send({ motivo });
+      await enviar('INCIDENTE_DE_SEGURIDAD').expect(422); // motivo no permitido para el cliente
+      await enviar('CAMBIO_DE_PLANES').expect(200);
+    });
+
+    it('una Idempotency-Key vacía o demasiado larga responde 400', async () => {
+      const v = await crearViaje();
+      await http
+        .post(`/viajes/${v.id}/arribo`)
+        .set('Authorization', v.conductor)
+        .set('Idempotency-Key', 'x'.repeat(201))
+        .expect(400);
+    });
+
     it('dos finalizaciones simultáneas: sólo una gana', async () => {
       const v = await viajeEnCurso();
       const finalizar = () =>
@@ -415,7 +455,7 @@ describe('API de viajes con M8 lento o caído (RNF-13)', () => {
   let http: ReturnType<typeof request>;
 
   beforeAll(async () => {
-    ({ app } = await crearApp(validador));
+    ({ app } = await crearApp({ validador }));
     http = request(app.getHttpServer());
   });
 
@@ -450,6 +490,26 @@ describe('API de viajes con M8 lento o caído (RNF-13)', () => {
     expect(viaje.body.estado).toBe('CONDUCTOR_ARRIBADO');
   });
 
+  it('dos inicios simultáneos con la misma Idempotency-Key: el segundo recibe PEDIDO_EN_CURSO', async () => {
+    const v = await viajeArribado();
+    validador.demoraMs = 100;
+    const clave = randomUUID();
+    const iniciar = () =>
+      http
+        .post(`/viajes/${v.id}/inicio`)
+        .set('Authorization', v.conductor)
+        .set('Idempotency-Key', clave)
+        .send({ codigoVerificacion: 'x' });
+
+    const [a, b] = await Promise.all([iniciar(), iniciar()]);
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    expect([a.body.codigo, b.body.codigo]).toContain('PEDIDO_EN_CURSO');
+
+    // Terminado el primero, repetir devuelve la respuesta guardada.
+    const repetido = await iniciar().expect(200);
+    expect(repetido.headers['idempotent-replayed']).toBe('true');
+  });
+
   it('dos inicios simultáneos mientras M8 demora: uno gana y el otro recibe CONFLICTO_CONCURRENCIA', async () => {
     const v = await viajeArribado();
     validador.demoraMs = 50;
@@ -459,5 +519,34 @@ describe('API de viajes con M8 lento o caído (RNF-13)', () => {
     const [a, b] = await Promise.all([iniciar(), iniciar()]);
     expect([a.status, b.status].sort()).toEqual([200, 409]);
     expect([a.body.codigo, b.body.codigo]).toContain('CONFLICTO_CONCURRENCIA');
+  });
+});
+
+describe('API de viajes con el almacén de idempotencia caído (RNF-13)', () => {
+  let app: INestApplication;
+  let http: ReturnType<typeof request>;
+  const almacenCaido = {
+    reservar: () => Promise.reject(new Error('Redis caído')),
+    completar: () => Promise.reject(new Error('Redis caído')),
+    liberar: () => Promise.reject(new Error('Redis caído')),
+  };
+
+  beforeAll(async () => {
+    ({ app } = await crearApp({ almacenIdempotencia: almacenCaido }));
+    http = request(app.getHttpServer());
+  });
+
+  afterAll(() => app.close());
+
+  it('procesa el pedido igual, y las reglas del dominio siguen evitando efectos duplicados', async () => {
+    const ids = nuevosIds();
+    const creado = await http.post('/viajes').set('Authorization', M5).send(cuerpoCrearViaje(ids)).expect(201);
+    const conductor = bearer('CONDUCTOR', ids.conductorId);
+    const arribo = () =>
+      http.post(`/viajes/${creado.body.id}/arribo`).set('Authorization', conductor).set('Idempotency-Key', 'k1');
+
+    await arribo().expect(200);
+    const repetido = await arribo().expect(409); // sin almacén no hay replay, pero tampoco doble arribo
+    expect(repetido.body.codigo).toBe('TRANSICION_INVALIDA');
   });
 });

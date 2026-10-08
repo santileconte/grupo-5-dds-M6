@@ -1,5 +1,5 @@
-# M6 completo para desarrollo local: PostgreSQL + RabbitMQ + servicio.
-#   npm run infra:levantar    → sólo PostgreSQL y RabbitMQ (para usar con `npm run start:dev`)
+# M6 completo para desarrollo local: PostgreSQL + RabbitMQ + Redis + servicio.
+#   npm run infra:levantar    → sólo PostgreSQL, RabbitMQ y Redis (para usar con `npm run start:dev`)
 #   npm run docker:levantar   → todo en contenedores (no hace falta Node instalado)
 # Los valores se toman de m6-viajes/.env. Las credenciales por defecto son sólo para desarrollo (RNF-06).
 services:
@@ -39,6 +39,17 @@ services:
       timeout: 5s
       retries: 20
 
+  redis:
+    # Guarda las claves de Idempotency-Key (RNF-11). Sin volumen: son datos efímeros con vencimiento.
+    image: redis:7.4.11-alpine3.21
+    ports:
+      - "${REDIS_PUERTO:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   m6-viajes:
     # Imagen versionada (RNF-04). El contexto es la raíz del repo porque la imagen incluye contratos/.
     image: grupo5/m6-viajes:0.1.0
@@ -50,6 +61,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       PUERTO: 3000
       PERSISTENCIA: postgres
@@ -57,6 +70,8 @@ services:
       BASE_DATOS_URL: postgres://${POSTGRES_USER:-m6}:${POSTGRES_PASSWORD:-m6}@postgres:5432/m6_viajes
       PUBLICADOR_EVENTOS: rabbitmq
       RABBITMQ_URL: amqp://${RABBITMQ_USUARIO:-m6}:${RABBITMQ_CLAVE:-m6}@rabbitmq:5672
+      IDEMPOTENCIA: redis
+      REDIS_URL: redis://redis:6379
       JWT_SECRETO: "${JWT_SECRETO:?Falta JWT_SECRETO - copiá .env.example a .env}"
       VALIDADOR_QR: ${VALIDADOR_QR:-simulado}
       ESPERA_MINIMA_ARRIBO_MINUTOS: ${ESPERA_MINIMA_ARRIBO_MINUTOS:-5}

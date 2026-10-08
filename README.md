@@ -24,7 +24,7 @@ estados del viaje, arribo, inicio, finalización, cancelación y auditoría.
 
 Requisitos:
 - Node.js 22 (ver `.nvmrc`).
-- Docker, para PostgreSQL y RabbitMQ. En GitHub Codespaces ya viene instalado.
+- Docker, para PostgreSQL, RabbitMQ y Redis. En GitHub Codespaces ya viene instalado.
 
 ### Opción A: servicio con Node y base en Docker (para programar)
 
@@ -32,7 +32,7 @@ Requisitos:
 cd m6-viajes
 cp .env.example .env         # configuración local (sólo la primera vez)
 npm ci                       # instala las dependencias exactas del lockfile
-npm run infra:levantar       # levanta PostgreSQL y RabbitMQ en Docker (quedan en segundo plano)
+npm run infra:levantar       # levanta PostgreSQL, RabbitMQ y Redis en Docker (quedan en segundo plano)
 npm run start:dev            # levanta el servicio en http://localhost:3000
 ```
 
@@ -44,7 +44,7 @@ quedan guardados aunque reinicies el servicio o el Codespace.
 ```bash
 cd m6-viajes
 cp .env.example .env         # sólo la primera vez
-npm run docker:levantar      # construye la imagen y levanta base + RabbitMQ + servicio
+npm run docker:levantar      # construye la imagen y levanta toda la infraestructura + el servicio
 ```
 
 Equivale a `docker compose up -d --build --wait`; si no tenés Node, podés correr ese comando
@@ -56,16 +56,17 @@ dos opciones a la vez, porque las dos usan el puerto 3000.
 | Comando | Para qué |
 |---|---|
 | `npm test` | Tests unitarios y de integración (con repositorio en memoria, no necesita la base) |
-| `npm run test:infra` | Tests de integración contra PostgreSQL y RabbitMQ reales (necesita `infra:levantar`) |
+| `npm run test:infra` | Tests de integración contra PostgreSQL, RabbitMQ y Redis reales (necesita `infra:levantar`) |
 | `npm run typecheck` | Chequeo de tipos |
 | `npm run contratos:validar` | Valida el OpenAPI y el AsyncAPI |
-| `npm run infra:levantar` / `infra:detener` | Levanta o detiene PostgreSQL y RabbitMQ |
-| `npm run docker:levantar` / `docker:detener` | Levanta o detiene todo (base, RabbitMQ y servicio) en contenedores |
+| `npm run infra:levantar` / `infra:detener` | Levanta o detiene PostgreSQL, RabbitMQ y Redis |
+| `npm run docker:levantar` / `docker:detener` | Levanta o detiene todo (infraestructura y servicio) en contenedores |
 | `npm run docker:logs` | Muestra los logs del servicio en contenedor |
 | `npm run db:consola` | Abre `psql` dentro de la base, por ejemplo para `SELECT * FROM viajes;` |
 | `npm run token -- <ROL> [id]` | Genera un token de prueba |
 
-Para trabajar **sin Docker**, poné `PERSISTENCIA=memoria` y `PUBLICADOR_EVENTOS=log` en `.env`.
+Para trabajar **sin Docker**, poné `PERSISTENCIA=memoria`, `PUBLICADOR_EVENTOS=log` e
+`IDEMPOTENCIA=memoria` en `.env`.
 Los datos se pierden al reiniciar y los eventos se muestran en la terminal.
 
 ### Ver los eventos en RabbitMQ
@@ -112,7 +113,7 @@ m6-viajes/
 │   │   ├── autenticacion.guard.ts     # verifica el JWT y obtiene id y rol
 │   │   ├── correlacion.middleware.ts  # X-Correlation-Id
 │   │   ├── problemas.filter.ts        # convierte errores en problem+json
-│   │   ├── idempotencia.interceptor.ts# Idempotency-Key
+│   │   ├── idempotencia/              # Idempotency-Key: interceptor y almacén (Redis o memoria)
 │   │   └── documentacion.ts           # Swagger UI en /docs desde el contrato
 │   └── viajes/
 │       ├── dominio/                   # reglas de negocio puras (sin NestJS)
@@ -124,7 +125,7 @@ m6-viajes/
 │       └── viajes.module.ts           # elige qué implementación usa cada puerto
 ├── migraciones/                       # esquema de la base, en archivos SQL numerados
 ├── Dockerfile                         # imagen OCI del servicio (se construye desde la raíz)
-├── docker-compose.yml                 # PostgreSQL + RabbitMQ + servicio para desarrollo
+├── docker-compose.yml                 # PostgreSQL + RabbitMQ + Redis + servicio para desarrollo
 ├── test/                              # tests de integración (levantan la app y llaman por HTTP)
 └── scripts/                           # generar tokens y validar el AsyncAPI
 ```
@@ -143,6 +144,8 @@ RabbitMQ los eventos guardados en la bandeja de salida.
 | `BASE_DATOS_URL` | Conexión a PostgreSQL, si `PERSISTENCIA=postgres` | — |
 | `PUBLICADOR_EVENTOS` | `rabbitmq` o `log` | `log` |
 | `RABBITMQ_URL` | Conexión a RabbitMQ, si `PUBLICADOR_EVENTOS=rabbitmq` | — |
+| `IDEMPOTENCIA` | `redis` o `memoria`: dónde se guardan las `Idempotency-Key` | `memoria` |
+| `REDIS_URL` | Conexión a Redis, si `IDEMPOTENCIA=redis` | — |
 | `OUTBOX_INTERVALO_MS` | Cada cuánto se publican los eventos pendientes (0 = nunca) | `1000` |
 | `JWT_SECRETO` | Secreto para verificar los JWT (obligatorio, ≥ 16 caracteres) | — |
 | `ESPERA_MINIMA_ARRIBO_MINUTOS` | Espera antes de cancelar por `CLIENTE_NO_SE_PRESENTO` | `5` |
@@ -160,3 +163,5 @@ RabbitMQ los eventos guardados en la bandeja de salida.
 - [x] Persistencia en PostgreSQL con migraciones, control de versión e historial inmutable
 - [x] Dockerfile (imagen versionada `grupo5/m6-viajes:0.1.0`) y docker-compose con base + servicio
 - [x] Publicación de eventos en RabbitMQ con bandeja de salida (outbox), sin perder eventos si el broker se cae
+- [x] `Idempotency-Key` en Redis: sobrevive reinicios, sirve con varias instancias y detecta pedidos simultáneos
+- [x] CI en GitHub Actions (confirmar que Actions esté habilitado en el repo)

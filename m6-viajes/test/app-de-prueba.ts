@@ -3,6 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../src/app.module';
+import { ALMACEN_IDEMPOTENCIA, AlmacenIdempotencia } from '../src/comun/idempotencia/almacen';
 import { PUBLICADOR_EVENTOS, VALIDADOR_CODIGO, ValidadorCodigoVerificacion } from '../src/viajes/aplicacion/puertos';
 import { RelevadorDeEventos } from '../src/viajes/aplicacion/relevador-de-eventos';
 import { PublicadorEventosEnLog } from '../src/viajes/infraestructura/publicador-eventos.log';
@@ -17,11 +18,19 @@ export interface AppDePrueba {
   relevador: RelevadorDeEventos;
 }
 
-/** Levanta la aplicación completa, opcionalmente con otro validador de QR. */
-export async function crearApp(validador?: ValidadorCodigoVerificacion): Promise<AppDePrueba> {
+export interface OpcionesApp {
+  validador?: ValidadorCodigoVerificacion;
+  almacenIdempotencia?: AlmacenIdempotencia;
+}
+
+/** Levanta la aplicación completa, opcionalmente reemplazando el validador de QR o el almacén de idempotencia. */
+export async function crearApp(opciones: OpcionesApp = {}): Promise<AppDePrueba> {
   let builder = Test.createTestingModule({ imports: [AppModule] });
-  if (validador) {
-    builder = builder.overrideProvider(VALIDADOR_CODIGO).useValue(validador);
+  if (opciones.validador) {
+    builder = builder.overrideProvider(VALIDADOR_CODIGO).useValue(opciones.validador);
+  }
+  if (opciones.almacenIdempotencia) {
+    builder = builder.overrideProvider(ALMACEN_IDEMPOTENCIA).useValue(opciones.almacenIdempotencia);
   }
   const modulo = await builder.compile();
   const app = modulo.createNestApplication({ logger: false });

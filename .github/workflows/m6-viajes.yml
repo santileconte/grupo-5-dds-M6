@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    # Bases reales para los tests de integración (`npm run test:infra`).
+    # Infraestructura real para los tests de integración (`npm run test:infra`).
     services:
       postgres:
         image: postgres:16.15-alpine3.24
@@ -62,6 +62,15 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
+      redis:
+        image: redis:7.4.11-alpine3.21
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
 
     steps:
       - name: Descargar el código
@@ -86,11 +95,12 @@ jobs:
       - name: Tests unitarios y de integración (en memoria)
         run: npm test
 
-      - name: Tests de integración contra PostgreSQL y RabbitMQ
+      - name: Tests de integración contra PostgreSQL, RabbitMQ y Redis
         run: npm run test:infra
         env:
           TEST_BASE_DATOS_URL: postgres://m6:m6@localhost:5432/m6_viajes_test
           TEST_RABBITMQ_URL: amqp://m6:m6@localhost:5672
+          TEST_REDIS_URL: redis://localhost:6379
 
   imagen:
     name: Imagen Docker

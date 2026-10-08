@@ -15,9 +15,11 @@ export const CODIGOS: Record<string, { status: number; titulo: string }> = {
   TRANSICION_INVALIDA: { status: 409, titulo: 'Transición inválida' },
   CONFLICTO_CONCURRENCIA: { status: 409, titulo: 'Conflicto de concurrencia' },
   VIAJE_ACTIVO_EXISTENTE: { status: 409, titulo: 'La solicitud ya tiene un viaje activo' },
+  PEDIDO_EN_CURSO: { status: 409, titulo: 'Pedido en curso' },
   PRECONDICION_FALLIDA: { status: 412, titulo: 'La versión no coincide' },
   CODIGO_VERIFICACION_INVALIDO: { status: 422, titulo: 'Código de verificación inválido' },
   MOTIVO_NO_PERMITIDO: { status: 422, titulo: 'Motivo de cancelación no permitido' },
+  CLAVE_IDEMPOTENCIA_REUTILIZADA: { status: 422, titulo: 'Idempotency-Key reutilizada' },
   ERROR_INTERNO: { status: 500, titulo: 'Error interno' },
   DEPENDENCIA_NO_DISPONIBLE: { status: 503, titulo: 'Dependencia no disponible' },
 };

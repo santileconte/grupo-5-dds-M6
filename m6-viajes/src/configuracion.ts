@@ -34,7 +34,15 @@ export function validarConfiguracion(env: Record<string, unknown>): Record<strin
     errores.push('RABBITMQ_URL es obligatoria cuando PUBLICADOR_EVENTOS=rabbitmq');
   }
 
-  for (const nombre of ['OUTBOX_INTERVALO_MS', 'OUTBOX_TAMANIO_LOTE', 'RABBITMQ_TIMEOUT_MS', 'PUERTO', 'ESPERA_MINIMA_ARRIBO_MINUTOS', 'M8_TIMEOUT_MS']) {
+  const idempotencia = env.IDEMPOTENCIA ?? 'memoria';
+  if (idempotencia !== 'memoria' && idempotencia !== 'redis') {
+    errores.push('IDEMPOTENCIA debe ser "memoria" o "redis"');
+  }
+  if (idempotencia === 'redis' && !env.REDIS_URL) {
+    errores.push('REDIS_URL es obligatoria cuando IDEMPOTENCIA=redis');
+  }
+
+  for (const nombre of ['REDIS_TIMEOUT_MS', 'OUTBOX_INTERVALO_MS', 'OUTBOX_TAMANIO_LOTE', 'RABBITMQ_TIMEOUT_MS', 'PUERTO', 'ESPERA_MINIMA_ARRIBO_MINUTOS', 'M8_TIMEOUT_MS']) {
     if (env[nombre] !== undefined && !(Number(env[nombre]) >= 0)) {
       errores.push(`${nombre} debe ser un número`);
     }

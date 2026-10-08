@@ -2,7 +2,7 @@ import { Body, Controller, Get, Headers, HttpCode, Param, Post, Query, Res, UseI
 import { Response } from 'express';
 import { Ctx } from '../../comun/contexto';
 import { ValidacionError } from '../../comun/errores-http';
-import { IdempotenciaInterceptor } from '../../comun/idempotencia.interceptor';
+import { IdempotenciaInterceptor } from '../../comun/idempotencia/idempotencia.interceptor';
 import { Viaje } from '../dominio/viaje';
 import { Contexto, ViajesService } from '../aplicacion/viajes.service';
 import { CancelarViajeDto, CrearViajeDto, FinalizarViajeDto, IniciarViajeDto, ListarViajesQuery } from './dtos';
