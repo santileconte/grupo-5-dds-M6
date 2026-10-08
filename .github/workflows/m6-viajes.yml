@@ -1,0 +1,138 @@
+# Integración continua de M6 (RNF-17): en cada push o pull request que toque M6 o los contratos,
+# verifica tipos, tests (también contra PostgreSQL y RabbitMQ reales), contratos y la imagen Docker.
+# En la rama main, además publica la imagen en GitHub Container Registry.
+name: M6 Viajes - CI
+
+on:
+  push:
+    paths:
+      - "m6-viajes/**"
+      - "contratos/**"
+      - ".github/workflows/m6-viajes.yml"
+  pull_request:
+    paths:
+      - "m6-viajes/**"
+      - "contratos/**"
+      - ".github/workflows/m6-viajes.yml"
+  # Permite correrlo a mano desde la pestaña Actions.
+  workflow_dispatch:
+
+# Si llega un push nuevo a la misma rama, se cancela la corrida anterior.
+concurrency:
+  group: m6-viajes-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: m6-viajes
+
+jobs:
+  verificar:
+    name: Tipos, tests y contratos
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Bases reales para los tests de integración (`npm run test:infra`).
+    services:
+      postgres:
+        image: postgres:16.15-alpine3.24
+        env:
+          POSTGRES_USER: m6
+          POSTGRES_PASSWORD: m6
+          POSTGRES_DB: m6_viajes_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U m6 -d m6_viajes_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+      rabbitmq:
+        image: rabbitmq:3.13.7-management-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: m6
+          RABBITMQ_DEFAULT_PASS: m6
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar Node.js (versión de .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: m6-viajes/.nvmrc
+          cache: npm
+          cache-dependency-path: m6-viajes/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Chequeo de tipos
+        run: npm run typecheck
+
+      - name: Validar contratos (OpenAPI y AsyncAPI)
+        run: npm run contratos:validar
+
+      - name: Tests unitarios y de integración (en memoria)
+        run: npm test
+
+      - name: Tests de integración contra PostgreSQL y RabbitMQ
+        run: npm run test:infra
+        env:
+          TEST_BASE_DATOS_URL: postgres://m6:m6@localhost:5432/m6_viajes_test
+          TEST_RABBITMQ_URL: amqp://m6:m6@localhost:5672
+
+  imagen:
+    name: Imagen Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: verificar
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Construir la imagen
+        working-directory: .
+        run: |
+          VERSION=$(node -p "require('./m6-viajes/package.json').version")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          docker build -f m6-viajes/Dockerfile -t m6-viajes:ci .
+
+      - name: Probar que la imagen arranca y responde /salud
+        working-directory: .
+        run: |
+          docker run -d --name m6 -p 3000:3000 \
+            -e JWT_SECRETO=secreto-solo-para-ci-0123456789 \
+            -e PERSISTENCIA=memoria -e PUBLICADOR_EVENTOS=log \
+            m6-viajes:ci
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:3000/salud; then echo; echo "La imagen responde"; exit 0; fi
+            sleep 1
+          done
+          echo "La imagen no respondió en /salud"; docker logs m6; exit 1
+
+      - name: Publicar en GitHub Container Registry (sólo en main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          IMAGEN="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/m6-viajes"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for TAG in "$VERSION" "sha-${GITHUB_SHA::7}" latest; do
+            docker tag m6-viajes:ci "$IMAGEN:$TAG"
+            docker push "$IMAGEN:$TAG"
+          done
