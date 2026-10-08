@@ -35,3 +35,11 @@ describe('el dominio coincide con los contratos', () => {
     expect(enumAsyncapi('Rol')).toEqual(valores(Rol).filter((r) => r !== Rol.SERVICIO));
   });
 });
+
+describe('los errores HTTP coinciden con el contrato', () => {
+  it('cada código del filtro está en el enum Problema.codigo y viceversa', async () => {
+    const { CODIGOS } = await import('../../comun/problemas.filter');
+    const delContrato: string[] = openapi.components.schemas.Problema.properties.codigo.enum;
+    expect(Object.keys(CODIGOS).sort()).toEqual([...delContrato].sort());
+  });
+});

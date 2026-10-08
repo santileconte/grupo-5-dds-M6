@@ -6,19 +6,27 @@
     "build": "nest build",
     "start": "nest start",
     "start:dev": "nest start --watch",
-    "test": "jest",
+    "test": "jest && jest --config test/jest-e2e.json",
     "test:cov": "jest --coverage",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "contratos:validar": "redocly lint --config ../redocly.yaml ../contratos/m6-viajes.openapi.yaml && node scripts/validar-asyncapi.js ../contratos/eventos/m6-viajes.asyncapi.yaml"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p test/tsconfig.json",
+    "contratos:validar": "redocly lint --config ../redocly.yaml ../contratos/m6-viajes.openapi.yaml && node scripts/validar-asyncapi.js ../contratos/eventos/m6-viajes.asyncapi.yaml",
+    "token": "node scripts/generar-token.js",
+    "test:e2e": "jest --config test/jest-e2e.json"
   },
   "author": "",
   "license": "UNLICENSED",
   "dependencies": {
     "@nestjs/common": "11.2.7",
+    "@nestjs/config": "4.0.4",
     "@nestjs/core": "11.2.7",
+    "@nestjs/jwt": "11.0.2",
     "@nestjs/platform-express": "11.2.7",
+    "@nestjs/swagger": "11.4.7",
+    "class-transformer": "0.5.1",
+    "class-validator": "0.15.1",
     "reflect-metadata": "0.2.2",
-    "rxjs": "7.8.2"
+    "rxjs": "7.8.2",
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@asyncapi/parser": "3.6.3",
@@ -28,11 +36,12 @@
     "@types/express": "5.0.6",
     "@types/jest": "30.0.0",
     "@types/node": "22.20.5",
+    "@types/supertest": "7.2.1",
     "jest": "30.5.2",
+    "supertest": "7.3.1",
     "ts-jest": "29.4.14",
     "ts-node": "10.9.2",
-    "typescript": "5.9.3",
-    "yaml": "2.9.1"
+    "typescript": "5.9.3"
   },
   "private": true,
   "jest": {

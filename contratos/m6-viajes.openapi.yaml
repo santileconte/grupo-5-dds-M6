@@ -21,6 +21,7 @@ info:
       misma respuesta sin volver a aplicar la acción.
     - Correlación: `X-Correlation-Id` se propaga en logs y eventos; si no viene, M6 genera uno.
     - Fechas en ISO 8601 con zona horaria (UTC).
+    - Una ruta inexistente responde `404` con código `RUTA_NO_ENCONTRADA`.
   contact:
     name: Grupo 5 - Desarrollo de Software 2026
   license:
@@ -219,6 +220,8 @@ paths:
                       $ref: '#/components/schemas/TransicionViaje'
         '401':
           $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
         '404':
           $ref: '#/components/responses/NoEncontrado'
 
@@ -239,6 +242,8 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/ViajeActualizado'
+        '400':
+          $ref: '#/components/responses/Validacion'
         '401':
           $ref: '#/components/responses/NoAutenticado'
         '403':
@@ -461,7 +466,7 @@ components:
           schema:
             $ref: '#/components/schemas/Viaje'
     Validacion:
-      description: 'Datos de entrada inválidos. Código: `VALIDACION`.'
+      description: 'Datos de entrada inválidos (cuerpo, query o header `If-Match`). Código: `VALIDACION`.'
       content:
         application/problem+json:
           schema:
@@ -873,6 +878,7 @@ components:
             - NO_AUTENTICADO
             - PROHIBIDO
             - VIAJE_NO_ENCONTRADO
+            - RUTA_NO_ENCONTRADA
             - TRANSICION_INVALIDA
             - CONFLICTO_CONCURRENCIA
             - VIAJE_ACTIVO_EXISTENTE
