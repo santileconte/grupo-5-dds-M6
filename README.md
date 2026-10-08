@@ -8,6 +8,7 @@ estados del viaje, arribo, inicio, finalización, cancelación y auditoría.
 
 | Ruta | Qué hay |
 |---|---|
+| [`docs/bitacora-del-trabajo.md`](docs/bitacora-del-trabajo.md) | Recorrido paso a paso de todo lo hecho hasta ahora, con los problemas encontrados al probar. |
 | [`docs/m6/maquina-de-estados.md`](docs/m6/maquina-de-estados.md) | Estados, transiciones, reglas de negocio y temas pendientes de acordar con otros grupos. |
 | [`contratos/m6-viajes.openapi.yaml`](contratos/m6-viajes.openapi.yaml) | Contrato de la API síncrona (OpenAPI 3.1). |
 | [`contratos/eventos/m6-viajes.asyncapi.yaml`](contratos/eventos/m6-viajes.asyncapi.yaml) | Eventos que publica M6 (AsyncAPI 3.0). |
