@@ -115,6 +115,9 @@ m6-viajes/
 │   │   ├── problemas.filter.ts        # convierte errores en problem+json
 │   │   ├── idempotencia/              # Idempotency-Key: interceptor y almacén (Redis o memoria)
 │   │   ├── registro/                  # logs JSON y contexto del pedido (idCorrelacion, viajeId)
+│   │   ├── limite/                    # límite de pedidos por usuario
+│   │   ├── redis/                     # conexión a Redis compartida
+│   │   ├── seguridad.ts               # helmet, tamaño máximo del cuerpo y CORS
 │   │   └── documentacion.ts           # Swagger UI en /docs desde el contrato
 │   └── viajes/
 │       ├── dominio/                   # reglas de negocio puras (sin NestJS)
@@ -151,6 +154,14 @@ RabbitMQ los eventos guardados en la bandeja de salida.
   ```
   Con `LOG_FORMATO=texto` (el de `.env.example`), los logs son más legibles al programar.
 
+### Seguridad
+
+- **Token obligatorio**, con vencimiento (`exp`); `npm run token` genera tokens de 8 horas.
+- **Límite de 120 pedidos por minuto por usuario** (1200 para servicios). Al superarlo se recibe
+  `429` con `Retry-After`. Cada respuesta trae `RateLimit-Remaining`.
+- **Headers de seguridad** (helmet), cuerpos de hasta 16 KB y CORS cerrado salvo `CORS_ORIGENES`.
+- Ver `docs/decisiones/ADR-005-seguridad-web.md`.
+
 ### Configuración (`.env`)
 
 | Variable | Descripción | Por defecto |
@@ -161,8 +172,12 @@ RabbitMQ los eventos guardados en la bandeja de salida.
 | `BASE_DATOS_URL` | Conexión a PostgreSQL, si `PERSISTENCIA=postgres` | — |
 | `PUBLICADOR_EVENTOS` | `rabbitmq` o `log` | `log` |
 | `RABBITMQ_URL` | Conexión a RabbitMQ, si `PUBLICADOR_EVENTOS=rabbitmq` | — |
-| `IDEMPOTENCIA` | `redis` o `memoria`: dónde se guardan las `Idempotency-Key` | `memoria` |
+| `IDEMPOTENCIA` | `redis` o `memoria`: dónde se guardan las `Idempotency-Key` y los contadores del límite | `memoria` |
 | `REDIS_URL` | Conexión a Redis, si `IDEMPOTENCIA=redis` | — |
+| `LIMITE_PEDIDOS_POR_MINUTO` | Pedidos por minuto por usuario (0 = sin límite) | `120` |
+| `LIMITE_PEDIDOS_SERVICIO_POR_MINUTO` | Ídem para servicios (M5, M2) | `1200` |
+| `CORS_ORIGENES` | Orígenes web permitidos, separados por coma | (ninguno) |
+| `JWT_EMISOR` / `JWT_AUDIENCIA` | Si se definen, se exigen en el token | — |
 | `OUTBOX_INTERVALO_MS` | Cada cuánto se publican los eventos pendientes (0 = nunca) | `1000` |
 | `JWT_SECRETO` | Secreto para verificar los JWT (obligatorio, ≥ 16 caracteres) | — |
 | `ESPERA_MINIMA_ARRIBO_MINUTOS` | Espera antes de cancelar por `CLIENTE_NO_SE_PRESENTO` | `5` |
@@ -183,3 +198,4 @@ RabbitMQ los eventos guardados en la bandeja de salida.
 - [x] `Idempotency-Key` en Redis: sobrevive reinicios, sirve con varias instancias y detecta pedidos simultáneos
 - [x] CI en GitHub Actions
 - [x] Salud y diagnóstico: `/salud/detalle` por dependencia y logs JSON con correlación
+- [x] Seguridad web: headers, límite de pedidos, tokens con vencimiento, cuerpos acotados y auditoría de dependencias

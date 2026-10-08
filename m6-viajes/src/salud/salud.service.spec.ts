@@ -1,6 +1,5 @@
 import { Pool } from 'pg';
-import { AlmacenIdempotenciaEnMemoria } from '../comun/idempotencia/almacen.memoria';
-import { AlmacenIdempotenciaRedis } from '../comun/idempotencia/almacen.redis';
+import { ConexionRedis } from '../comun/redis/conexion-redis';
 import { BandejaDeSalida } from '../viajes/aplicacion/puertos';
 import { PublicadorEventosEnLog } from '../viajes/infraestructura/publicador-eventos.log';
 import { PublicadorEventosRabbitMQ } from '../viajes/infraestructura/publicador-eventos.rabbitmq';
@@ -15,7 +14,7 @@ const poolQue = (query: () => Promise<unknown>) => ({ query }) as unknown as Poo
 
 describe('SaludService', () => {
   it('OK cuando todo responde (y lo no configurado no cuenta como error)', async () => {
-    const salud = new SaludService(poolQue(async () => ({})), new PublicadorEventosEnLog(), new AlmacenIdempotenciaEnMemoria(), bandeja());
+    const salud = new SaludService(poolQue(async () => ({})), new PublicadorEventosEnLog(), null, bandeja());
     const informe = await salud.informe();
     expect(informe.estado).toBe('OK');
     expect(informe.componentes).toMatchObject({
@@ -29,7 +28,7 @@ describe('SaludService', () => {
     const pool = poolQue(async () => {
       throw new Error('no se pudo conectar a postgres://m6:secreta@db:5432');
     });
-    const informe = await new SaludService(pool, new PublicadorEventosEnLog(), new AlmacenIdempotenciaEnMemoria(), bandeja()).informe();
+    const informe = await new SaludService(pool, new PublicadorEventosEnLog(), null, bandeja()).informe();
     expect(informe.estado).toBe('ERROR');
     expect(informe.componentes.postgres.detalle).not.toContain('secreta');
   });
@@ -37,14 +36,14 @@ describe('SaludService', () => {
   it('ERROR si PostgreSQL no responde a tiempo (nunca espera indefinidamente)', async () => {
     const pool = poolQue(() => new Promise(() => undefined));
     const inicio = Date.now();
-    const informe = await new SaludService(pool, new PublicadorEventosEnLog(), new AlmacenIdempotenciaEnMemoria(), bandeja()).informe();
+    const informe = await new SaludService(pool, new PublicadorEventosEnLog(), null, bandeja()).informe();
     expect(informe.componentes.postgres).toMatchObject({ estado: 'ERROR', detalle: expect.stringContaining('sin respuesta') });
     expect(Date.now() - inicio).toBeLessThan(3000);
   });
 
   it('DEGRADADO si RabbitMQ y Redis no están disponibles', async () => {
     const rabbit = new PublicadorEventosRabbitMQ('amqp://guest:guest@127.0.0.1:1', 500);
-    const redis = new AlmacenIdempotenciaRedis('redis://127.0.0.1:1', 300);
+    const redis = new ConexionRedis('redis://127.0.0.1:1', 300);
     try {
       const informe = await new SaludService(poolQue(async () => ({})), rabbit, redis, bandeja()).informe();
       expect(informe.estado).toBe('DEGRADADO');
@@ -60,7 +59,7 @@ describe('SaludService', () => {
     const informe = await new SaludService(
       poolQue(async () => ({})),
       new PublicadorEventosEnLog(),
-      new AlmacenIdempotenciaEnMemoria(),
+      null,
       bandeja(haceDosMinutos, 3),
     ).informe();
     expect(informe.estado).toBe('DEGRADADO');

@@ -32,3 +32,11 @@ export class ClaveIdempotenciaReutilizadaError extends ErrorDominio {
     super('Esta Idempotency-Key ya se usó con otros datos; usá una clave nueva para un pedido distinto');
   }
 }
+
+/** 429: se superó el límite de pedidos por minuto. */
+export class DemasiadosPedidosError extends ErrorDominio {
+  readonly codigo = 'DEMASIADOS_PEDIDOS';
+  constructor(readonly reintentarEnSegundos: number) {
+    super(`Superaste el límite de pedidos por minuto; reintentá en ${reintentarEnSegundos} s`);
+  }
+}

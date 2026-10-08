@@ -86,6 +86,9 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
+      - name: Auditar dependencias de producción (vulnerabilidades conocidas)
+        run: npm audit --omit=dev --audit-level=moderate
+
       - name: Chequeo de tipos
         run: npm run typecheck
 

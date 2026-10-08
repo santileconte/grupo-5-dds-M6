@@ -2,8 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool } from 'pg';
-import { ALMACEN_IDEMPOTENCIA, AlmacenIdempotencia } from '../comun/idempotencia/almacen';
-import { AlmacenIdempotenciaRedis } from '../comun/idempotencia/almacen.redis';
+import { CONEXION_REDIS, ConexionRedis } from '../comun/redis/conexion-redis';
 import { BANDEJA_DE_SALIDA, BandejaDeSalida, PUBLICADOR_EVENTOS, PublicadorEventos } from '../viajes/aplicacion/puertos';
 import { POOL_POSTGRES } from '../viajes/infraestructura/postgres/conexion';
 import { PublicadorEventosRabbitMQ } from '../viajes/infraestructura/publicador-eventos.rabbitmq';
@@ -53,7 +52,7 @@ export class SaludService {
   constructor(
     @Inject(POOL_POSTGRES) private readonly pool: Pool | null,
     @Inject(PUBLICADOR_EVENTOS) private readonly publicador: PublicadorEventos,
-    @Inject(ALMACEN_IDEMPOTENCIA) private readonly almacen: AlmacenIdempotencia,
+    @Inject(CONEXION_REDIS) private readonly redis: ConexionRedis | null,
     @Inject(BANDEJA_DE_SALIDA) private readonly bandeja: BandejaDeSalida,
   ) {}
 
@@ -65,9 +64,7 @@ export class SaludService {
       this.publicador instanceof PublicadorEventosRabbitMQ
         ? verificar(() => (this.publicador as PublicadorEventosRabbitMQ).verificarConexion())
         : noConfigurado('PUBLICADOR_EVENTOS=log'),
-      this.almacen instanceof AlmacenIdempotenciaRedis
-        ? verificar(() => (this.almacen as AlmacenIdempotenciaRedis).verificarConexion())
-        : noConfigurado('IDEMPOTENCIA=memoria'),
+      this.redis ? verificar(() => this.redis!.verificarConexion()) : noConfigurado('IDEMPOTENCIA=memoria'),
       this.resumenBandeja(),
     ]);
 

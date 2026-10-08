@@ -642,6 +642,65 @@ vuelve, todo se recupera solo.
 
 ---
 
+## Paso 15 – Seguridad web (RNF-12)
+
+**Qué es:** RNF-12 pide autenticación, autorización, validación, HTTPS y "controles básicos de
+vulnerabilidades web". Las tres primeras ya existían (tokens JWT, roles, dueño del viaje y DTOs
+validados). Antes de agregar nada se **probó el servicio como lo haría un atacante**, y aparecieron
+estos problemas:
+
+| Prueba | Antes | Ahora |
+|---|---|---|
+| Mandar un cuerpo de 200 KB | `500 ERROR_INTERNO` 🐛 | `413 CUERPO_DEMASIADO_GRANDE` |
+| Usar un token **sin vencimiento** | Aceptado (200) | `401`: "El token debe tener vencimiento" |
+| Mirar los headers de respuesta | `X-Powered-By: Express`, sin defensas | CSP, HSTS, `nosniff`, `X-Frame-Options`; sin `X-Powered-By` |
+| Mandar miles de pedidos | Sin límite | 120 por minuto por usuario; después `429` con `Retry-After` |
+| `X-Correlation-Id` con tabulaciones o texto raro | Se copiaba tal cual a los logs | Se reemplaza por un UUID (evita falsificar logs) |
+| `npm audit` (dependencias de producción) | 2 vulnerabilidades moderadas (`js-yaml`) | 0 |
+
+**Qué se agregó:**
+
+| Archivo | Para qué |
+|---|---|
+| `src/comun/seguridad.ts` | `helmet` (headers), cuerpos de hasta 16 KB y CORS configurable |
+| `src/comun/limite/` | Límite de pedidos por usuario: contador en Redis (atómico) o en memoria |
+| `src/comun/redis/` | Una sola conexión a Redis, compartida por la idempotencia y el límite |
+| `autenticacion.guard.ts` | Exige `exp`; verifica `iss` y `aud` si se configuran `JWT_EMISOR` y `JWT_AUDIENCIA` |
+| `package.json` → `overrides` | Fuerza `js-yaml` 5.4.3, que corrige la vulnerabilidad |
+| CI | Nuevo paso `npm audit`: si aparece una vulnerabilidad moderada o peor, el CI falla |
+| Contrato | Respuestas `413` y `429`, códigos nuevos y sección "Seguridad" |
+| `docs/decisiones/ADR-005-seguridad-web.md` | Las decisiones y lo pendiente con M1 |
+
+**Cómo funciona el límite de pedidos:**
+- Corre **después** de identificar al usuario, así el límite es por usuario y no por IP (en una
+  facultad, mucha gente comparte la misma IP).
+- Cada respuesta trae `RateLimit-Limit`, `RateLimit-Remaining` y `RateLimit-Reset`. Al pasarse:
+  `429 DEMASIADOS_PEDIDOS` y `Retry-After`, que dice en cuántos segundos reintentar.
+- Los servicios (M5, M2) tienen un límite más alto (1200 por minuto), porque hacen pedidos en
+  nombre de muchos usuarios.
+- Los health checks (`/salud`) no cuentan.
+
+**Para los tests:** los tokens de prueba ahora tienen vencimiento (`expiresIn`), como exige el
+servicio.
+
+✅ **Pruebas:**
+- **Tests nuevos:**
+  - headers de seguridad;
+  - 413 con cuerpo grande;
+  - 400 con JSON roto;
+  - 401 con token sin vencimiento o vencido;
+  - `X-Correlation-Id` peligroso descartado;
+  - CORS sólo para el origen configurado;
+  - límite: 3 pedidos OK con restantes 2, 1 y 0, el cuarto da 429;
+  - el límite es por usuario, los servicios con 0 no tienen límite y `/salud` no cuenta;
+  - contador en Redis atómico con 20 pedidos simultáneos.
+- **Totales:** 54 unitarios y 70 de integración contra PostgreSQL, RabbitMQ y Redis reales.
+- **Prueba manual:** se repitieron las pruebas de la tabla de arriba contra el servidor real, y se
+  comprobó con un navegador que Swagger (`/docs`) sigue cargando sus 10 operaciones sin errores
+  bajo la nueva CSP.
+
+---
+
 ## Problemas que aparecieron al probar y cómo se resolvieron
 
 | Síntoma | Causa | Solución |
@@ -653,6 +712,7 @@ vuelve, todo se recupera solo.
 | **403** `PROHIBIDO` al crear el viaje | Se usó el token de CLIENTE y después el de CONDUCTOR; crear viajes sólo lo puede hacer SERVICIO | Logout y Authorize con el token de **SERVICIO**. |
 | **200** en lugar de 201 al crear | El viaje ya se había creado en un Execute anterior con el mismo `asignacionId` | Es el comportamiento esperado (idempotencia). Para otro viaje, cambiar `solicitudId` y `asignacionId`. |
 | Las consultas SQL "no hacían nada" | Se escribieron en la terminal donde corría el servidor | Abrir otra terminal con **+** y correr `npm run db:consola` ahí. |
+| Un cuerpo de 200 KB respondía `500 ERROR_INTERNO` | El error del lector de JSON (`entity.too.large`) no era una `HttpException` y el filtro no lo reconocía | Límite explícito de 16 KB y el filtro responde `413 CUERPO_DEMASIADO_GRANDE` |
 | El servicio se caía entero al apagar PostgreSQL | El pool de `pg` emitía un evento `error` sin manejador | `pool.on('error', ...)` en `conexion.ts`; ahora se recupera solo |
 | Los primeros pedidos con `Idempotency-Key` fallaban con "Stream isn't writeable" | El cliente de Redis rechazaba comandos antes de terminar de conectarse | Esperar la conexión hasta 1 s antes de cada comando |
 | RabbitMQ rechazaba al usuario `guest` desde el contenedor del servicio | `guest` sólo puede conectarse desde la misma máquina | En docker compose se crea el usuario `m6` / `m6` |
@@ -675,7 +735,7 @@ grupo-5-dds/
 │   ├── acuerdos-con-otros-grupos.md  # propuestas y mensajes para cada grupo
 │   ├── catalogo-eventos.md
 │   ├── m6/maquina-de-estados.md
-│   └── decisiones/                   # ADR-001 stack, 002 persistencia, 003 eventos, 004 idempotencia
+│   └── decisiones/                   # ADR-001 stack, 002 persistencia, 003 eventos, 004 idempotencia, 005 seguridad
 └── m6-viajes/                        # servicio NestJS
     ├── src/                          # código (dominio, aplicación, infraestructura, http, común)
     ├── test/                         # tests de integración
@@ -702,6 +762,7 @@ grupo-5-dds/
 | RNF-11 Caché y vencimiento (TP2) | ✅ | Redis para `Idempotency-Key`, ADR-004 |
 | RNF-14 Salud y diagnóstico (TP2) | ✅ | `/salud`, `/salud/detalle`, logs JSON con `idCorrelacion`/`viajeId` |
 | RNF-17 Automatización (TP2) | ✅ | `.github/workflows/m6-viajes.yml`, corridas en verde en GitHub |
+| RNF-12 Seguridad (TP2-TP3) | ✅ (falta el token real de M1) | JWT con `exp`, roles, límite de pedidos, helmet, cuerpos acotados, `npm audit` en CI, ADR-005 |
 | RNF-13 Resiliencia (TP2) | ✅ | Timeouts con M8, RabbitMQ y Redis; eventos que esperan si el broker se cae; sin Redis se sigue operando; sobrevive a la caída de PostgreSQL |
 | RNF-20 Documentación | ✅ | README, docs/, ADRs |
 | RF-6.1 a RF-6.8 | ✅ | Dominio + API |
@@ -711,8 +772,8 @@ grupo-5-dds/
 1. **Mandar los mensajes** de `docs/acuerdos-con-otros-grupos.md`, empezando por M5, M8, M1 y el
    Grupo 12, y ajustar contratos y código según lo que se acuerde.
 2. **TP2 – lo que queda:**
-   - **Seguridad (RNF-12):** validar los tokens reales de M1 (cuando se acuerde el formato),
-     limitar la cantidad de pedidos por usuario y agregar headers de seguridad.
+   - **Seguridad con M1:** cuando se acuerde el formato, validar los tokens reales de M1
+     (idealmente RS256 con clave pública, configurando `JWT_EMISOR` y `JWT_AUDIENCIA`).
    - **Integración distribuida (RNF-07):** probar M6 junto con los módulos de los otros grupos.
 
 ---

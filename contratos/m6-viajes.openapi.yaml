@@ -22,6 +22,14 @@ info:
     - Correlación: `X-Correlation-Id` se propaga en logs y eventos; si no viene, M6 genera uno.
     - Fechas en ISO 8601 con zona horaria (UTC).
     - Una ruta inexistente responde `404` con código `RUTA_NO_ENCONTRADA`.
+
+    **Seguridad (RNF-12)**
+    - El token debe tener vencimiento (`exp`); sin él, o vencido, se responde `401`.
+    - Límite de pedidos por usuario y por minuto (120 para usuarios, 1200 para servicios, configurable).
+      Cada respuesta informa `RateLimit-Limit`, `RateLimit-Remaining` y `RateLimit-Reset`; al superarlo,
+      `429 DEMASIADOS_PEDIDOS` con `Retry-After`.
+    - Cuerpos de hasta 16 KB (`413 CUERPO_DEMASIADO_GRANDE`).
+    - En entornos publicados la API se expone sólo por HTTPS (lo termina el proxy o balanceador).
   contact:
     name: Grupo 5 - Desarrollo de Software 2026
   license:
@@ -94,6 +102,10 @@ paths:
           $ref: '#/components/responses/Prohibido'
         '409':
           $ref: '#/components/responses/Conflicto'
+        '413':
+          $ref: '#/components/responses/CuerpoDemasiadoGrande'
+        '429':
+          $ref: '#/components/responses/DemasiadosPedidos'
     get:
       tags: [Viajes]
       operationId: listarViajes
@@ -165,6 +177,8 @@ paths:
           $ref: '#/components/responses/NoAutenticado'
         '403':
           $ref: '#/components/responses/Prohibido'
+        '429':
+          $ref: '#/components/responses/DemasiadosPedidos'
 
   /viajes/{viajeId}:
     parameters:
@@ -192,6 +206,8 @@ paths:
           $ref: '#/components/responses/NoAutenticado'
         '404':
           $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadosPedidos'
 
   /viajes/{viajeId}/historial:
     parameters:
@@ -226,6 +242,8 @@ paths:
           $ref: '#/components/responses/Prohibido'
         '404':
           $ref: '#/components/responses/NoEncontrado'
+        '429':
+          $ref: '#/components/responses/DemasiadosPedidos'
 
   /viajes/{viajeId}/arribo:
     parameters:
@@ -258,6 +276,8 @@ paths:
           $ref: '#/components/responses/PrecondicionFallida'
         '422':
           $ref: '#/components/responses/NoProcesable'
+        '429':
+          $ref: '#/components/responses/DemasiadosPedidos'
 
   /viajes/{viajeId}/inicio:
     parameters:
@@ -303,6 +323,10 @@ paths:
           $ref: '#/components/responses/NoProcesable'
         '503':
           $ref: '#/components/responses/DependenciaNoDisponible'
+        '413':
+          $ref: '#/components/responses/CuerpoDemasiadoGrande'
+        '429':
+          $ref: '#/components/responses/DemasiadosPedidos'
 
   /viajes/{viajeId}/finalizacion:
     parameters:
@@ -345,6 +369,10 @@ paths:
           $ref: '#/components/responses/PrecondicionFallida'
         '422':
           $ref: '#/components/responses/NoProcesable'
+        '413':
+          $ref: '#/components/responses/CuerpoDemasiadoGrande'
+        '429':
+          $ref: '#/components/responses/DemasiadosPedidos'
 
   /viajes/{viajeId}/cancelacion:
     parameters:
@@ -394,6 +422,10 @@ paths:
           $ref: '#/components/responses/PrecondicionFallida'
         '422':
           $ref: '#/components/responses/NoProcesable'
+        '413':
+          $ref: '#/components/responses/CuerpoDemasiadoGrande'
+        '429':
+          $ref: '#/components/responses/DemasiadosPedidos'
 
   /salud:
     get:
@@ -577,6 +609,25 @@ components:
         - `CODIGO_VERIFICACION_INVALIDO`: el código QR es incorrecto, venció o ya se usó.
         - `MOTIVO_NO_PERMITIDO`: el motivo no corresponde al rol o todavía no aplica.
         - `CLAVE_IDEMPOTENCIA_REUTILIZADA`: la `Idempotency-Key` ya se usó con un cuerpo distinto.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    CuerpoDemasiadoGrande:
+      description: 'El cuerpo supera 16 KB. Código: `CUERPO_DEMASIADO_GRANDE`.'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    DemasiadosPedidos:
+      description: |
+        Se superó el límite de pedidos por minuto del usuario. Código: `DEMASIADOS_PEDIDOS`.
+        `Retry-After` indica en cuántos segundos se puede volver a intentar.
+      headers:
+        Retry-After:
+          description: Segundos hasta que se reinicia el límite.
+          schema:
+            type: integer
       content:
         application/problem+json:
           schema:
@@ -978,6 +1029,7 @@ components:
           enum:
             - VALIDACION
             - NO_AUTENTICADO
+            - CUERPO_DEMASIADO_GRANDE
             - PROHIBIDO
             - VIAJE_NO_ENCONTRADO
             - RUTA_NO_ENCONTRADA
@@ -989,6 +1041,7 @@ components:
             - CODIGO_VERIFICACION_INVALIDO
             - MOTIVO_NO_PERMITIDO
             - CLAVE_IDEMPOTENCIA_REUTILIZADA
+            - DEMASIADOS_PEDIDOS
             - DEPENDENCIA_NO_DISPONIBLE
             - ERROR_INTERNO
         estadoActual:

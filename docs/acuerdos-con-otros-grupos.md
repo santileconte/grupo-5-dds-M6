@@ -210,8 +210,8 @@ formato real.
 
 > Hola, somos el Grupo 5 (M6). En la tabla de grupos no figura quién implementa M1 (Identidad y
 > Acceso). ¿Lo provee la cátedra, o lo simulamos cada grupo? Nosotros estamos validando un JWT
-> con los claims `sub` (id del usuario) y `rol` (`CLIENTE`, `CONDUCTOR`, `OPERADOR` o `SERVICIO`
-> para llamadas entre módulos). ¿Hay un formato de token definido, o algún proveedor (por ejemplo
+> con los claims `sub` (id del usuario), `rol` (`CLIENTE`, `CONDUCTOR`, `OPERADOR` o `SERVICIO`
+> para llamadas entre módulos) y `exp` (vencimiento, obligatorio). ¿Hay un formato de token definido, o algún proveedor (por ejemplo
 > Keycloak) que debamos usar? ¡Gracias!
 
 **Acordado:** _(completar)_

@@ -3,12 +3,13 @@ import { Response } from 'express';
 import { DependenciaNoDisponibleError } from '../viajes/aplicacion/errores';
 import { ErrorDominio, TransicionInvalidaError } from '../viajes/dominio/errores';
 import { PedidoConContexto } from './contexto';
-import { ValidacionError } from './errores-http';
+import { DemasiadosPedidosError, ValidacionError } from './errores-http';
 
 /** Estado HTTP y título de cada código de error del contrato. */
 export const CODIGOS: Record<string, { status: number; titulo: string }> = {
   VALIDACION: { status: 400, titulo: 'Datos inválidos' },
   NO_AUTENTICADO: { status: 401, titulo: 'No autenticado' },
+  CUERPO_DEMASIADO_GRANDE: { status: 413, titulo: 'El cuerpo del pedido es demasiado grande' },
   PROHIBIDO: { status: 403, titulo: 'Acción no permitida' },
   VIAJE_NO_ENCONTRADO: { status: 404, titulo: 'Viaje no encontrado' },
   RUTA_NO_ENCONTRADA: { status: 404, titulo: 'Ruta no encontrada' },
@@ -20,6 +21,7 @@ export const CODIGOS: Record<string, { status: number; titulo: string }> = {
   CODIGO_VERIFICACION_INVALIDO: { status: 422, titulo: 'Código de verificación inválido' },
   MOTIVO_NO_PERMITIDO: { status: 422, titulo: 'Motivo de cancelación no permitido' },
   CLAVE_IDEMPOTENCIA_REUTILIZADA: { status: 422, titulo: 'Idempotency-Key reutilizada' },
+  DEMASIADOS_PEDIDOS: { status: 429, titulo: 'Demasiados pedidos' },
   ERROR_INTERNO: { status: 500, titulo: 'Error interno' },
   DEPENDENCIA_NO_DISPONIBLE: { status: 503, titulo: 'Dependencia no disponible' },
 };
@@ -39,7 +41,7 @@ export class ProblemasFilter implements ExceptionFilter {
     const { codigo, detalle, extra } = this.clasificar(error, pedido);
     const { status, titulo } = CODIGOS[codigo];
 
-    if (error instanceof DependenciaNoDisponibleError) {
+    if (error instanceof DependenciaNoDisponibleError || error instanceof DemasiadosPedidosError) {
       respuesta.setHeader('Retry-After', String(error.reintentarEnSegundos));
     }
 
@@ -70,6 +72,14 @@ export class ProblemasFilter implements ExceptionFilter {
     }
     if (error instanceof ErrorDominio && error.codigo in CODIGOS) {
       return { codigo: error.codigo, detalle: error.message };
+    }
+    // Errores del lector de JSON (body-parser), que no son HttpException.
+    const tipo = (error as { type?: unknown })?.type;
+    if (tipo === 'entity.too.large') {
+      return { codigo: 'CUERPO_DEMASIADO_GRANDE', detalle: 'El cuerpo del pedido supera el tamaño máximo permitido' };
+    }
+    if (typeof tipo === 'string' && tipo.startsWith('entity.')) {
+      return { codigo: 'VALIDACION', detalle: 'El cuerpo del pedido no es un JSON válido' };
     }
     if (error instanceof HttpException) {
       const status = error.getStatus();

@@ -1,21 +1,19 @@
 import { Global, Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { ALMACEN_IDEMPOTENCIA } from './almacen';
 import { AlmacenIdempotenciaEnMemoria } from './almacen.memoria';
 import { AlmacenIdempotenciaRedis } from './almacen.redis';
 import { IdempotenciaInterceptor } from './idempotencia.interceptor';
+import { CONEXION_REDIS, ConexionRedis } from '../redis/conexion-redis';
 
-/** Elige dónde se guardan las claves de idempotencia: IDEMPOTENCIA=redis o memoria. */
+/** Guarda las claves de idempotencia en Redis si está configurado (IDEMPOTENCIA=redis), si no en memoria. */
 @Global()
 @Module({
   providers: [
     {
       provide: ALMACEN_IDEMPOTENCIA,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) =>
-        config.get('IDEMPOTENCIA', 'memoria') === 'redis'
-          ? new AlmacenIdempotenciaRedis(config.getOrThrow('REDIS_URL'), Number(config.get('REDIS_TIMEOUT_MS', 1000)))
-          : new AlmacenIdempotenciaEnMemoria(),
+      inject: [CONEXION_REDIS],
+      useFactory: (redis: ConexionRedis | null) =>
+        redis ? new AlmacenIdempotenciaRedis(redis) : new AlmacenIdempotenciaEnMemoria(),
     },
     IdempotenciaInterceptor,
   ],

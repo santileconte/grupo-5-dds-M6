@@ -5,6 +5,8 @@ import { PedidoConContexto } from './contexto';
 import { contextoPedido } from './registro/contexto-pedido';
 
 const HEADER = 'x-correlation-id';
+/** Sólo letras, números y . _ : - (hasta 100): un valor con saltos de línea podría falsificar logs. */
+const FORMATO_VALIDO = /^[A-Za-z0-9._:-]{1,100}$/;
 
 /**
  * Correlación y registro de pedidos (RNF-14):
@@ -18,7 +20,7 @@ export class CorrelacionMiddleware implements NestMiddleware {
 
   use(pedido: PedidoConContexto, respuesta: Response, siguiente: NextFunction): void {
     const recibido = pedido.header(HEADER);
-    pedido.idCorrelacion = recibido && recibido.length <= 100 ? recibido : randomUUID();
+    pedido.idCorrelacion = recibido && FORMATO_VALIDO.test(recibido) ? recibido : randomUUID();
     respuesta.setHeader('X-Correlation-Id', pedido.idCorrelacion);
 
     const contexto = { idCorrelacion: pedido.idCorrelacion };
