@@ -22,16 +22,29 @@ Cuando un acuerdo se cierre:
 |---|---|---|---|---|
 | M5 Despacho | 4 y 13 | Cómo se crea el viaje y cómo vuelve una solicitud al despacho | 🔴 Alta | ⬜ Sin enviar |
 | M8 Notificaciones | 7 y 10 | Generación y validación del QR | 🔴 Alta | ⬜ Sin enviar |
-| M1 Identidad | Cátedra | Formato del token (claims y firma) | 🔴 Alta | ⬜ Sin enviar |
+| Cátedra | — | Quién hace M1, formato del token y aprobación del stack (RNF-01) | 🔴 Alta | ⬜ Sin enviar |
 | M6 (otra impl.) | 12 | Unificar el contrato de M6 | 🔴 Alta | ⬜ Sin enviar |
 | M7 Pagos | 6 y 11 | Datos para cobro y cargo de cancelación | 🟡 Media | ⬜ Sin enviar |
 | M4 Ubicación | 3 y 14 | Liberar al conductor al terminar o cancelar | 🟡 Media | ⬜ Sin enviar |
 | M2 Clientes | 1 y 17 | Historial de viajes y calificación | 🟢 Baja | ⬜ Sin enviar |
 | M3 Conductores | 2 y 15 | Calificación del cliente | 🟢 Baja | ⬜ Sin enviar |
 | M9 Reservas | 8 y 9 | Viajes originados en reservas | 🟢 Baja | ⬜ Sin enviar |
-| Todos | — | Convenciones comunes (errores, eventos, correlación) | 🔴 Alta | ⬜ Sin enviar |
+| Todos | — | Convenciones comunes (errores, eventos, correlación, límites, tokens) | 🔴 Alta | ⬜ Sin enviar |
+| Equipo integrador | Todos | Infraestructura compartida, puertos, credenciales y datos de demo | 🟡 Media | ⬜ Sin enviar |
 
 Estados: ⬜ Sin enviar · 📤 Enviado · 💬 En discusión · ✅ Acordado
+
+### Novedades desde la primera versión de este documento
+
+Estos puntos se sumaron a los mensajes porque cambian cómo nos llaman o nos escuchan:
+
+| Novedad | A quién afecta | Qué tienen que hacer |
+|---|---|---|
+| **Límite de pedidos:** 120 por minuto por usuario y 1200 para servicios. Al pasarse responde `429` con `Retry-After` | Todos los que llaman a la API (M5, M2, apps) | Esperar los segundos de `Retry-After` y reintentar |
+| **El token debe traer `exp`** (vencimiento); si no, `401` | M1 y quien genere tokens de servicio | Emitir tokens con vencimiento |
+| **Los eventos pueden llegar repetidos** (entrega "al menos una vez", por el outbox) | Todos los que escuchan eventos (M5, M7, M8, M4, M2, M3, M9) | Ignorar los `idEvento` ya procesados. **Clave para M7: si no, cobraría dos veces** |
+| **`Idempotency-Key`** en las acciones: repetir un pedido no lo ejecuta dos veces | Apps de cliente y conductor | Mandar una clave única por acción (por ejemplo un UUID) y reusarla al reintentar |
+| **Health checks:** `GET /salud` (vivo) y `GET /salud/detalle` (estado de la base, RabbitMQ y Redis) | Equipo integrador | Usarlos para monitorear |
 
 Los contratos completos están en el repositorio:
 - `contratos/m6-viajes.openapi.yaml`: la API.
@@ -59,6 +72,10 @@ del TP2 se vuelve muy difícil. Lo ideal es acordarlo una sola vez para todos.
 | Entrega | Al menos una vez: cada consumidor descarta duplicados por `idEvento`. |
 | Privacidad | Los eventos no llevan coordenadas, datos personales ni secretos. |
 | Ids y fechas | UUID para ids; fechas ISO 8601 en UTC. |
+| Tokens | JWT con `sub`, `rol` y **`exp` obligatorio** (ver la sección de la cátedra). |
+| Límite de pedidos | Headers `RateLimit-Limit`, `RateLimit-Remaining` y `RateLimit-Reset`; al superarlo, `429` con `Retry-After`. |
+| Reintentos seguros | Header `Idempotency-Key` en las operaciones que cambian datos. |
+| Salud | `GET /salud` (el proceso está vivo) y `GET /salud/detalle` (estado de las dependencias). |
 
 **Mensaje para el grupo general:**
 
@@ -69,6 +86,10 @@ del TP2 se vuelve muy difícil. Lo ideal es acordarlo una sola vez para todos.
 > - RabbitMQ con un único exchange `movilidad.eventos` (topic) y routing keys `<modulo>.<entidad>.<hecho>` (ej. `viajes.viaje.finalizado`).
 > - Todos los eventos con el mismo sobre: `idEvento, tipo, version, ocurridoEn, productor, idCorrelacion, datos`.
 > - Ids UUID y fechas ISO 8601 en UTC.
+> - Como los eventos se entregan "al menos una vez", cada consumidor ignora los `idEvento` que ya procesó.
+> - Tokens JWT siempre con vencimiento (`exp`).
+> - Para reintentar sin duplicar: header `Idempotency-Key`. Ante un `429`, esperar lo que diga `Retry-After`.
+> - Health checks en `GET /salud` y `GET /salud/detalle`, para que el equipo integrador pueda monitorear.
 >
 > Lo tenemos documentado en `docs/catalogo-eventos.md` de nuestro repo. ¿Les sirve? ¿Alguien
 > prefiere otra cosa? Si les parece, armamos un catálogo común donde cada grupo agregue sus eventos.
@@ -105,6 +126,12 @@ de empezar, la solicitud tiene que **volver** a M5 para buscar otro conductor.
    `datos.requiereRedespacho` es `true`, vuelve a buscar conductor para `datos.solicitudId`.
    Después crea un viaje nuevo con un `asignacionId` **nuevo**.
 
+3. **Límite de pedidos:** como servicio, M5 puede hacer hasta **1200 pedidos por minuto**. Si lo
+   supera recibe `429` con `Retry-After`. Reintentar `POST /viajes` es seguro: con el mismo
+   `asignacionId` no se duplica el viaje.
+4. **Eventos repetidos:** `ViajeCancelado` puede llegar más de una vez. Hay que ignorar los
+   `idEvento` ya procesados, para no redespachar dos veces.
+
 **Preguntas abiertas:**
 - ¿Tienen un id de asignación (`asignacionId`) distinto del de la solicitud? Lo usamos para que la
   creación sea idempotente.
@@ -125,7 +152,11 @@ de empezar, la solicitud tiene que **volver** a M5 para buscar otro conductor.
 >
 > **2) Devolución al despacho:** si el conductor cancela antes de iniciar, publicamos
 > `ViajeCancelado` (routing key `viajes.viaje.cancelado`) con `requiereRedespacho: true` y el
-> `solicitudId`. Ustedes lo escuchan y vuelven a buscar conductor.
+> `solicitudId`. Ustedes lo escuchan y vuelven a buscar conductor. Ojo: un evento puede llegar
+> repetido, así que conviene ignorar los `idEvento` que ya procesaron.
+>
+> **3) Límites:** con token de servicio pueden hacer hasta 1200 pedidos por minuto; si se pasan,
+> respondemos `429` con `Retry-After`. Reintentar `POST /viajes` es seguro.
 >
 > Preguntas: ¿tienen un `asignacionId` propio? ¿Prefieren avisarnos por evento en vez de llamar a
 > la API? ¿Quién marca al conductor como ocupado en M4?
@@ -160,6 +191,8 @@ comprobante a partir de nuestros eventos.
    `ViajeFinalizado` y `ViajeCancelado`.
 4. **Comprobante (RF-8.4):** a partir de `ViajeFinalizado`, o del evento de cobro de M7 si
    prefieren esperar el importe.
+5. **Eventos repetidos:** un evento puede llegar dos veces. Hay que ignorar los `idEvento` ya
+   procesados, para no mandar dos notificaciones ni generar dos QR.
 
 **Preguntas abiertas:**
 - ¿El QR contiene un código opaco, o algo firmado (por ejemplo, un JWT)? Para nosotros sólo es un
@@ -182,6 +215,8 @@ comprobante a partir de nuestros eventos.
 >
 > También publicamos `ConductorArribado`, `ViajeIniciado`, `ViajeFinalizado` y `ViajeCancelado`
 > para las notificaciones y el comprobante (los campos están en nuestro `docs/catalogo-eventos.md`).
+> Un evento puede llegar repetido: conviene ignorar los `idEvento` ya procesados, para no
+> notificar dos veces.
 >
 > Preguntas: ¿el QR es un código opaco o algo firmado? ¿Cuánto dura? ¿Les sirve ese endpoint o
 > ya tienen otro definido? ¡Gracias!
@@ -190,29 +225,41 @@ comprobante a partir de nuestros eventos.
 
 ---
 
-## M1 – Identidad y Acceso (cátedra) 🔴
+## Cátedra: M1, formato del token y aprobación del stack 🔴
 
-**Qué necesitamos:** todos los módulos validan el token que emite M1. Hoy M6 acepta un JWT
-firmado con un secreto compartido (HS256) con los claims `sub` y `rol`. Tenemos que confirmar el
-formato real.
+**Qué necesitamos:**
+1. **M1 (Identidad y Acceso):** la tabla de grupos de la consigna no le asigna grupo. Todos los
+   módulos validan el token que emite M1, así que hay que saber quién lo hace y con qué formato.
+2. **RNF-01:** el stack es "a elección del grupo, *con aprobación* y justificación técnica". La
+   justificación está en `docs/decisiones/ADR-001-stack-tecnologico.md`, pero falta la aprobación.
+3. **Alcance de cada entrega:** la consigna dice que la cátedra define qué requerimientos entran
+   en cada TP.
 
-**Propuesta:**
-- JWT con claims:
-  - `sub`: id del usuario (UUID), o nombre del módulo para servicios;
-  - `rol`: `CLIENTE | CONDUCTOR | OPERADOR | SERVICIO`;
-  - `exp`: vencimiento.
-- Firma **RS256** con clave pública expuesta en un endpoint JWKS, para que los módulos validen sin
-  compartir secretos (RF-1.4). Mientras tanto, HS256 con secreto compartido para desarrollo.
-- Tokens de servicio (client credentials) con `rol: SERVICIO` para llamadas entre módulos (M5 → M6,
-  M2 → M6).
+**Lo que hoy espera M6 del token:**
+- JWT con `sub` (id del usuario, o nombre del módulo para servicios), `rol`
+  (`CLIENTE | CONDUCTOR | OPERADOR | SERVICIO`) y **`exp` obligatorio**.
+- Firma HS256 con secreto compartido (para desarrollo).
+- Ya está preparado para exigir `iss` (emisor) y `aud` (audiencia) si se configuran.
 
-**Mensaje (consulta a la cátedra):**
+**Propuesta si M1 lo implementa un grupo o la cátedra:** firma **RS256** con la clave pública
+publicada en un endpoint JWKS, para que los módulos validen sin compartir secretos (RF-1.4), y
+tokens de servicio con `rol: SERVICIO` para llamadas entre módulos (M5 → M6, M2 → M6).
 
-> Hola, somos el Grupo 5 (M6). En la tabla de grupos no figura quién implementa M1 (Identidad y
-> Acceso). ¿Lo provee la cátedra, o lo simulamos cada grupo? Nosotros estamos validando un JWT
-> con los claims `sub` (id del usuario), `rol` (`CLIENTE`, `CONDUCTOR`, `OPERADOR` o `SERVICIO`
-> para llamadas entre módulos) y `exp` (vencimiento, obligatorio). ¿Hay un formato de token definido, o algún proveedor (por ejemplo
-> Keycloak) que debamos usar? ¡Gracias!
+**Mensaje para la cátedra:**
+
+> Hola, somos el Grupo 5 (M6 – Viajes y Ciclo de Vida). Tenemos tres consultas:
+>
+> 1. **M1 (Identidad y Acceso):** en la tabla de grupos no figura quién lo implementa. ¿Lo provee
+>    la cátedra, o cada grupo lo simula? Nosotros validamos un JWT con `sub` (id del usuario),
+>    `rol` (`CLIENTE`, `CONDUCTOR`, `OPERADOR` o `SERVICIO` para llamadas entre módulos) y `exp`
+>    (vencimiento, obligatorio). ¿Hay un formato definido o un proveedor que debamos usar (por
+>    ejemplo Keycloak)?
+> 2. **Aprobación del stack (RNF-01):** elegimos TypeScript con NestJS 11, PostgreSQL, RabbitMQ y
+>    Redis. La justificación está en el ADR-001 de nuestro repositorio. ¿Está aprobado?
+> 3. **Alcance de las entregas:** ¿qué requerimientos funcionales y no funcionales entran en el
+>    TP1 y en el TP2?
+>
+> ¡Gracias!
 
 **Acordado:** _(completar)_
 
@@ -261,6 +308,10 @@ calcula importes**: sólo publica los datos.
   canceló el cliente después del arribo".
 - **`ViajeIniciado`**, si quieren autorizar el pago al inicio.
 
+- ⚠️ **Eventos repetidos:** `ViajeFinalizado` puede llegar más de una vez, por la entrega "al
+  menos una vez". M7 **tiene** que ignorar los `idEvento` (o los `viajeId`) ya cobrados; si no,
+  cobraría dos veces (RF-7.6, RNF-09).
+
 **Preguntas abiertas:**
 - ¿Les alcanzan esos campos? ¿Necesitan el id de la estimación de tarifa que hizo M5?
 - ¿Autorizan el pago al crear el viaje, al iniciarlo o recién al finalizar?
@@ -274,6 +325,10 @@ calcula importes**: sólo publica los datos.
 > - `ViajeCancelado` (`viajes.viaje.cancelado`): `canceladoPor (CLIENTE|CONDUCTOR|OPERADOR),
 >   motivo, estadoAlCancelar, creadoEn, arriboEn, iniciadoEn, canceladoEn`.
 > - `ViajeIniciado`, por si autorizan el pago al inicio.
+>
+> **Importante:** un evento puede llegar repetido (lo garantizamos "al menos una vez" para que
+> nunca se pierda). Para no cobrar dos veces, ignoren los `idEvento` (o los `viajeId`) que ya
+> procesaron.
 >
 > ¿Les alcanza con eso? ¿Necesitan algún dato más, como el id de la estimación de tarifa?
 > ¡Gracias!
@@ -319,7 +374,9 @@ llama a M4.
 > `GET /viajes?clienteId=...&pagina=1&tamanio=20`, que devuelve un resumen paginado. Pueden
 > llamarlo con un token de servicio o con el token del propio cliente. Para habilitar la
 > calificación (RF-2.5) pueden escuchar nuestro evento `ViajeFinalizado`, o consultar
-> `GET /viajes/{id}` y verificar que `estado` sea `FINALIZADO`. ¿Les sirve? ¡Gracias!
+> `GET /viajes/{id}` y verificar que `estado` sea `FINALIZADO`. Con token de servicio el límite
+> es de 1200 pedidos por minuto; si se pasan, respondemos `429` con `Retry-After`. ¿Les sirve?
+> ¡Gracias!
 
 **Acordado:** _(completar)_
 
@@ -356,3 +413,41 @@ la reserva vinculada, por ejemplo marcándola cumplida con `ViajeFinalizado`.
 > ¿Necesitan algo más de nuestro lado? ¡Gracias!
 
 **Acordado:** _(completar)_
+
+---
+
+## Equipo integrador (todos los grupos) 🟡
+
+**Qué necesitamos:** la consigna menciona un "equipo integrador" que opera una instancia completa
+y acuerda versiones, configuración y datos de demostración. Para el TP2 hay que definir cómo se
+levantan los 9 módulos juntos.
+
+**Temas a acordar:**
+
+| Tema | Propuesta de M6 |
+|---|---|
+| Infraestructura | Un RabbitMQ compartido con el exchange `movilidad.eventos`. Cada módulo con **su propia** base de datos (RNF-05); puede ser un mismo servidor PostgreSQL con bases separadas. Redis compartido, con prefijos por módulo (M6 usa `m6:`). |
+| Cómo se encuentran | Cada módulo recibe las URLs de los otros por variables de entorno (M6: `M8_URL`, `RABBITMQ_URL`, etc.); nada fijo en el código (RNF-06). |
+| Puertos | Una tabla con un puerto por módulo, para no chocar: por ejemplo M1 → 3001, …, M6 → 3006, …, M9 → 3009. |
+| Credenciales | Secretos fuera del repositorio, en un `.env` compartido por fuera de Git (RNF-06). |
+| Imágenes | Cada grupo publica la suya con una versión fija. La de M6 es `ghcr.io/facundoros9/m6-viajes:<versión>`. |
+| Monitoreo | Cada módulo expone un health check. M6: `GET /salud` y `GET /salud/detalle`. |
+| Datos de demo | Usuarios, conductores y vehículos de prueba con **los mismos ids** en todos los módulos. |
+| Correlación | Todos propagan `X-Correlation-Id` y lo incluyen en sus logs, para seguir un viaje de punta a punta. |
+
+**Mensaje:**
+
+> Hola a todos, somos el Grupo 5 (M6 – Viajes). Para el TP2 vamos a tener que levantar los 9
+> módulos juntos. Proponemos acordar:
+> - un RabbitMQ compartido (exchange `movilidad.eventos`) y cada módulo con su propia base;
+> - una tabla de puertos (por ejemplo M1 → 3001, …, M9 → 3009) y las URLs de los otros módulos
+>   por variables de entorno;
+> - que cada grupo publique su imagen Docker con una versión fija y exponga un health check
+>   (nosotros: `GET /salud` y `GET /salud/detalle`);
+> - datos de demo con los mismos ids de clientes, conductores y vehículos en todos los módulos.
+>
+> Si les parece, armamos un `docker-compose` común en un repositorio compartido. ¿Quiénes se
+> suman a coordinarlo?
+
+**Acordado:** _(completar)_
+

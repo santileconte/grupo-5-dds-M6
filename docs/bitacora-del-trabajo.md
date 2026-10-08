@@ -701,6 +701,45 @@ servicio.
 
 ---
 
+## Paso 16 – Actualizar los acuerdos con los otros grupos
+
+**Qué se hizo:** se actualizó `docs/acuerdos-con-otros-grupos.md` con lo que cambió desde la
+primera versión (paso 10). Los mensajes todavía no se habían mandado, así que se corrigieron antes
+de enviarlos.
+
+**Cambios:**
+- **Nueva tabla "Novedades"**, con lo que afecta a otros grupos:
+  - el límite de pedidos (`429` con `Retry-After`);
+  - el token con `exp` obligatorio;
+  - que los eventos pueden llegar repetidos;
+  - `Idempotency-Key`;
+  - los health checks.
+- **Convenciones comunes:** se sumaron tokens, límites, reintentos seguros y salud.
+- **M5, M8, M2:** los mensajes mencionan el límite de pedidos y que hay que ignorar eventos
+  repetidos.
+- **M7:** advertencia destacada. Si no ignoran los eventos repetidos, **cobrarían dos veces** el
+  mismo viaje.
+- **Cátedra:** la sección de M1 pasó a ser una consulta a la cátedra con tres preguntas: quién
+  hace M1 y con qué token, si aprueba el stack (RNF-01) y qué entra en cada entrega.
+- **Nueva sección "Equipo integrador":**
+  - infraestructura compartida y una base por módulo;
+  - tabla de puertos y URLs por variables de entorno;
+  - imágenes versionadas y health checks;
+  - datos de demo con los mismos ids en todos los módulos.
+
+**Avance estimado al cerrar este paso** (estimación propia; la cátedra define el alcance de cada
+entrega):
+
+| Etapa | Avance | Qué falta |
+|---|---|---|
+| RF-6.1 a RF-6.8 | ~95% | QR real de M8 (hoy simulado) y cargo de cancelación en M7 |
+| TP1 | ~90% | Acordar el contrato con los otros grupos y que la cátedra apruebe el stack |
+| TP2 | ~75% | Integración distribuida con los otros módulos y tokens reales de M1 |
+| TP3 | ~25% | Tests E2E, performance (RNF-16), despliegue en la nube (RNF-18) |
+| **Total** | **~65%** | Lo que falta depende sobre todo de coordinar con otros grupos |
+
+---
+
 ## Problemas que aparecieron al probar y cómo se resolvieron
 
 | Síntoma | Causa | Solución |
@@ -769,8 +808,9 @@ grupo-5-dds/
 
 ## Próximos pasos
 
-1. **Mandar los mensajes** de `docs/acuerdos-con-otros-grupos.md`, empezando por M5, M8, M1 y el
-   Grupo 12, y ajustar contratos y código según lo que se acuerde.
+1. **Mandar los mensajes** de `docs/acuerdos-con-otros-grupos.md`, empezando por M5, M8, la
+   cátedra y el Grupo 12. Ir completando la tabla de seguimiento y ajustar contratos y código
+   según lo que se acuerde.
 2. **TP2 – lo que queda:**
    - **Seguridad con M1:** cuando se acuerde el formato, validar los tokens reales de M1
      (idealmente RS256 con clave pública, configurando `JWT_EMISOR` y `JWT_AUDIENCIA`).
