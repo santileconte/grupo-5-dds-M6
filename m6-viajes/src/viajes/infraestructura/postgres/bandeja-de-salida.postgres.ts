@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { SobreEvento } from '../../aplicacion/eventos';
-import { BandejaDeSalida, ResultadoLote } from '../../aplicacion/puertos';
+import { BandejaDeSalida, ResultadoLote, ResumenPendientes } from '../../aplicacion/puertos';
 
 /**
  * Bandeja de salida sobre la tabla `eventos_salientes` (migraciones/002_bandeja_de_salida.sql).
@@ -48,5 +48,12 @@ export class BandejaDeSalidaPostgres implements BandejaDeSalida {
     } finally {
       cliente.release();
     }
+  }
+
+  async resumenPendientes(): Promise<ResumenPendientes> {
+    const { rows } = await this.pool.query<{ cantidad: string; mas_antiguo: Date | null }>(
+      'SELECT count(*) AS cantidad, min(creado_en) AS mas_antiguo FROM eventos_salientes WHERE publicado_en IS NULL',
+    );
+    return { cantidad: Number(rows[0].cantidad), masAntiguo: rows[0].mas_antiguo };
   }
 }

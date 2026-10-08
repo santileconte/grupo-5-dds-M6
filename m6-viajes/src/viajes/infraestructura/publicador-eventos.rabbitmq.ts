@@ -48,6 +48,11 @@ export class PublicadorEventosRabbitMQ implements PublicadorEventos, OnApplicati
     await conTimeout(confirmado, this.timeoutMs, 'RabbitMQ no confirmó la publicación a tiempo');
   }
 
+  /** Para /salud/detalle: conecta si hace falta y falla si RabbitMQ no responde a tiempo. */
+  async verificarConexion(): Promise<void> {
+    await this.obtenerCanal();
+  }
+
   async onApplicationShutdown(): Promise<void> {
     await this.conexion?.close().catch(() => undefined);
   }

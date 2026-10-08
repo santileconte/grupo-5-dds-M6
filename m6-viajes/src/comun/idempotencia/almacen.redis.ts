@@ -74,6 +74,12 @@ export class AlmacenIdempotenciaRedis implements AlmacenIdempotencia, OnApplicat
     await this.redis.del(clave);
   }
 
+  /** Para /salud/detalle: falla si Redis no responde a tiempo. */
+  async verificarConexion(): Promise<void> {
+    await this.esperarConexion();
+    await this.redis.ping();
+  }
+
   /**
    * Si la conexión todavía se está estableciendo (al arrancar o tras una caída), espera hasta
    * `timeoutMs` a que esté lista. Si no lo logra, falla en vez de quedarse esperando.

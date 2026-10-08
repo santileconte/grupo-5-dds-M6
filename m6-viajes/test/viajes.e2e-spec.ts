@@ -3,6 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { DependenciaNoDisponibleError } from '../src/viajes/aplicacion/errores';
 import { ResultadoValidacionCodigo, ValidadorCodigoVerificacion } from '../src/viajes/aplicacion/puertos';
+import { RegistroJson } from '../src/comun/registro/registro-json';
 import { RelevadorDeEventos } from '../src/viajes/aplicacion/relevador-de-eventos';
 import { PublicadorEventosEnLog } from '../src/viajes/infraestructura/publicador-eventos.log';
 import { bearer, crearApp, cuerpoCrearViaje, nuevosIds } from './app-de-prueba';
@@ -67,6 +68,43 @@ describe('API de viajes (integración)', () => {
       const { JwtService } = await import('@nestjs/jwt');
       const falso = new JwtService({ secret: 'otro-secreto-cualquiera-1234' }).sign({ sub: 'x', rol: 'OPERADOR' });
       await http.get('/viajes').set('Authorization', `Bearer ${falso}`).expect(401);
+    });
+
+    it('GET /salud/detalle informa el estado de cada dependencia', async () => {
+      const res = await http.get('/salud/detalle').expect(200);
+      expect(res.body).toMatchObject({
+        estado: 'OK',
+        version: expect.any(String),
+        componentes: { postgres: expect.any(Object), rabbitmq: expect.any(Object), redis: expect.any(Object) },
+        bandejaDeSalida: { pendientes: expect.any(Number) },
+      });
+    });
+
+    it('registra cada pedido en JSON con su idCorrelacion y su viaje', async () => {
+      const lineas: Record<string, unknown>[] = [];
+      app.useLogger(new RegistroJson((linea) => lineas.push(JSON.parse(linea))));
+      try {
+        const res = await http
+          .post('/viajes')
+          .set('Authorization', M5)
+          .set('X-Correlation-Id', 'corr-log-1')
+          .send(cuerpoCrearViaje())
+          .expect(201);
+        await new Promise((r) => setImmediate(r)); // el log se escribe al terminar la respuesta
+        expect(lineas).toContainEqual(
+          expect.objectContaining({
+            contexto: 'Pedidos',
+            mensaje: 'POST /viajes 201',
+            idCorrelacion: 'corr-log-1',
+            viajeId: res.body.id,
+            rol: 'SERVICIO',
+          }),
+        );
+        // Nunca se registra el token.
+        expect(JSON.stringify(lineas)).not.toContain('Bearer');
+      } finally {
+        app.useLogger(false);
+      }
     });
 
     it('una ruta inexistente responde 404 RUTA_NO_ENCONTRADA', async () => {

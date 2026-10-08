@@ -10,6 +10,12 @@ export const POOL_POSTGRES = Symbol('PoolPostgres');
  */
 export async function crearPoolPostgres(url: string): Promise<Pool> {
   const pool = new Pool({ connectionString: url, max: 10, connectionTimeoutMillis: 5000 });
+  // Si PostgreSQL se reinicia o corta una conexión ociosa, el pool emite 'error'. Sin este
+  // manejador, Node tiraría abajo todo el proceso. Con él, el pool descarta esa conexión y abre
+  // otra en el próximo pedido; mientras la base no vuelva, los pedidos fallan con 500 y
+  // /salud/detalle informa ERROR (RNF-13).
+  const logger = new Logger('PostgreSQL');
+  pool.on('error', (error) => logger.warn(`Se perdió una conexión con la base: ${error.message}`));
   try {
     await pool.query('SELECT 1');
   } catch (error) {

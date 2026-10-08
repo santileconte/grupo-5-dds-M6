@@ -35,6 +35,8 @@ tags:
     description: Creación y consulta de viajes.
   - name: Ciclo de vida
     description: Transiciones de estado del viaje.
+  - name: Salud
+    description: Health checks y diagnóstico (RNF-14).
 security:
   - bearerAuth: []
 
@@ -395,9 +397,10 @@ paths:
 
   /salud:
     get:
-      tags: [Viajes]
+      tags: [Salud]
       operationId: verificarSalud
-      summary: Health check
+      summary: Liveness (el proceso está vivo)
+      description: No consulta dependencias. Es el que usa el HEALTHCHECK de Docker.
       security: []
       responses:
         '200':
@@ -411,6 +414,36 @@ paths:
                   estado:
                     type: string
                     examples: [OK]
+
+  /salud/detalle:
+    get:
+      tags: [Salud]
+      operationId: diagnosticarSalud
+      summary: Readiness y diagnóstico de dependencias
+      description: |
+        RNF-14. Verifica PostgreSQL, RabbitMQ y Redis, con un timeout de 1,5 s cada uno, y la bandeja
+        de salida de eventos.
+        - `OK`: todo responde.
+        - `DEGRADADO` (200): falla RabbitMQ o Redis, o hay eventos esperando hace más de 60 s.
+          El servicio sigue atendiendo.
+        - `ERROR` (503): PostgreSQL no responde y el servicio no puede atender pedidos.
+
+        Un componente desactivado por configuración figura como `NO_CONFIGURADO`. Nunca expone
+        credenciales.
+      security: []
+      responses:
+        '200':
+          description: El servicio puede atender pedidos (`OK` o `DEGRADADO`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InformeSalud'
+        '503':
+          description: El servicio no puede atender pedidos (`ERROR`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InformeSalud'
 
 components:
   securitySchemes:
@@ -865,6 +898,63 @@ components:
           $ref: '#/components/schemas/MotivoCancelacion'
         detalle:
           type: string
+
+    EstadoComponente:
+      type: object
+      required: [estado]
+      properties:
+        estado:
+          type: string
+          enum: [OK, ERROR, NO_CONFIGURADO]
+        latenciaMs:
+          type: integer
+        detalle:
+          type: string
+
+    InformeSalud:
+      type: object
+      required: [estado, version, activoDesde, componentes, bandejaDeSalida]
+      properties:
+        estado:
+          type: string
+          enum: [OK, DEGRADADO, ERROR]
+        version:
+          type: string
+        activoDesde:
+          type: string
+          format: date-time
+        componentes:
+          type: object
+          required: [postgres, rabbitmq, redis]
+          properties:
+            postgres:
+              $ref: '#/components/schemas/EstadoComponente'
+            rabbitmq:
+              $ref: '#/components/schemas/EstadoComponente'
+            redis:
+              $ref: '#/components/schemas/EstadoComponente'
+        bandejaDeSalida:
+          description: '`null` si no se pudo consultar (por ejemplo, con la base caída).'
+          oneOf:
+            - type: object
+              required: [pendientes, antiguedadMaximaSegundos]
+              properties:
+                pendientes:
+                  type: integer
+                  minimum: 0
+                antiguedadMaximaSegundos:
+                  type: integer
+                  minimum: 0
+            - type: 'null'
+      example:
+        estado: DEGRADADO
+        version: 0.1.0
+        activoDesde: '2026-10-08T15:00:00Z'
+        componentes:
+          postgres: { estado: OK, latenciaMs: 2 }
+          rabbitmq: { estado: ERROR, latenciaMs: 3, detalle: 'connect ECONNREFUSED 10.0.0.5:5672' }
+          redis: { estado: OK, latenciaMs: 1 }
+        bandejaDeSalida: { pendientes: 4, antiguedadMaximaSegundos: 12 }
 
     Problema:
       type: object

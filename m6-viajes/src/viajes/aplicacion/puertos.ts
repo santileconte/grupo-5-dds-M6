@@ -53,6 +53,13 @@ export interface BandejaDeSalida {
    * desordenar los eventos, y registra el error; ese evento se reintenta en la próxima vuelta.
    */
   procesarPendientes(limite: number, publicar: (evento: SobreEvento) => Promise<void>): Promise<ResultadoLote>;
+  /** Cuántos eventos esperan publicarse y desde cuándo espera el más viejo (para /salud/detalle). */
+  resumenPendientes(): Promise<ResumenPendientes>;
+}
+
+export interface ResumenPendientes {
+  cantidad: number;
+  masAntiguo: Date | null;
 }
 
 export interface ResultadoLote {

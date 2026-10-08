@@ -108,12 +108,13 @@ m6-viajes/
 ├── src/
 │   ├── main.ts / app.module.ts        # arranque y armado de NestJS
 │   ├── configuracion.ts               # validación de variables de entorno
-│   ├── salud/                         # GET /salud y redirección de / a /docs
+│   ├── salud/                         # GET /salud, /salud/detalle y redirección de / a /docs
 │   ├── comun/                         # lo transversal a toda la API
 │   │   ├── autenticacion.guard.ts     # verifica el JWT y obtiene id y rol
 │   │   ├── correlacion.middleware.ts  # X-Correlation-Id
 │   │   ├── problemas.filter.ts        # convierte errores en problem+json
 │   │   ├── idempotencia/              # Idempotency-Key: interceptor y almacén (Redis o memoria)
+│   │   ├── registro/                  # logs JSON y contexto del pedido (idCorrelacion, viajeId)
 │   │   └── documentacion.ts           # Swagger UI en /docs desde el contrato
 │   └── viajes/
 │       ├── dominio/                   # reglas de negocio puras (sin NestJS)
@@ -135,11 +136,27 @@ m6-viajes/
 `Viaje` (valida la transición y registra el historial). Aparte, el `RelevadorDeEventos` publica en
 RabbitMQ los eventos guardados en la bandeja de salida.
 
+### Salud y logs
+
+- **`GET /salud`**: responde `{"estado":"OK"}` si el proceso está vivo. Lo usa Docker.
+- **`GET /salud/detalle`**: estado de PostgreSQL, RabbitMQ y Redis, y cuántos eventos esperan
+  publicarse.
+  - `OK`: todo responde.
+  - `DEGRADADO`: falla RabbitMQ o Redis, pero se sigue atendiendo.
+  - `ERROR` (HTTP 503): falla PostgreSQL.
+- **Logs:** con `LOG_FORMATO=json` (el de Docker), cada línea es un JSON con `idCorrelacion`,
+  `viajeId` y `reservaId`, que se puede filtrar. Ejemplo:
+  ```bash
+  npm run docker:logs | grep '"viajeId":"<id>"'
+  ```
+  Con `LOG_FORMATO=texto` (el de `.env.example`), los logs son más legibles al programar.
+
 ### Configuración (`.env`)
 
 | Variable | Descripción | Por defecto |
 |---|---|---|
 | `PUERTO` | Puerto HTTP | `3000` |
+| `LOG_FORMATO` | `json` (estructurado) o `texto` | `json` |
 | `PERSISTENCIA` | `postgres` o `memoria` | `memoria` |
 | `BASE_DATOS_URL` | Conexión a PostgreSQL, si `PERSISTENCIA=postgres` | — |
 | `PUBLICADOR_EVENTOS` | `rabbitmq` o `log` | `log` |
@@ -164,4 +181,5 @@ RabbitMQ los eventos guardados en la bandeja de salida.
 - [x] Dockerfile (imagen versionada `grupo5/m6-viajes:0.1.0`) y docker-compose con base + servicio
 - [x] Publicación de eventos en RabbitMQ con bandeja de salida (outbox), sin perder eventos si el broker se cae
 - [x] `Idempotency-Key` en Redis: sobrevive reinicios, sirve con varias instancias y detecta pedidos simultáneos
-- [x] CI en GitHub Actions (confirmar que Actions esté habilitado en el repo)
+- [x] CI en GitHub Actions
+- [x] Salud y diagnóstico: `/salud/detalle` por dependencia y logs JSON con correlación

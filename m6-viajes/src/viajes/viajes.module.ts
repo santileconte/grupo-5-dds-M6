@@ -87,5 +87,7 @@ import { ValidadorCodigoSimulado } from './infraestructura/validador-codigo.simu
           : new ValidadorCodigoSimulado(),
     },
   ],
+  // Los usa el health check detallado (salud/).
+  exports: [POOL_POSTGRES, PUBLICADOR_EVENTOS, BANDEJA_DE_SALIDA],
 })
 export class ViajesModule {}

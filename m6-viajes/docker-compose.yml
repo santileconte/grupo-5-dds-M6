@@ -65,6 +65,7 @@ services:
         condition: service_healthy
     environment:
       PUERTO: 3000
+      LOG_FORMATO: json
       PERSISTENCIA: postgres
       # Dentro de la red de Docker la base se llama "postgres", no "localhost".
       BASE_DATOS_URL: postgres://${POSTGRES_USER:-m6}:${POSTGRES_PASSWORD:-m6}@postgres:5432/m6_viajes

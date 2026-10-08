@@ -571,6 +571,77 @@ para datos que vencen solos.
 
 ---
 
+## Paso 14 – Salud y diagnóstico: health checks y logs estructurados
+
+**Qué es:** RNF-14 pide *health checks, logs estructurados y correlación por identificador de
+solicitud, viaje o reserva*. Con esto, el equipo integrador puede responder rápido dos preguntas:
+"¿M6 anda bien?" y "¿qué pasó con el viaje X?".
+
+### Health checks
+
+| Endpoint | Para qué | Qué revisa |
+|---|---|---|
+| `GET /salud` | *Liveness*: ¿el proceso está vivo? Lo usa Docker | Nada externo, para que Docker no reinicie el contenedor porque se cayó, por ejemplo, RabbitMQ |
+| `GET /salud/detalle` | *Readiness* y diagnóstico | PostgreSQL, RabbitMQ y Redis, con timeout de 1,5 s cada uno, y la bandeja de eventos |
+
+Estados de `/salud/detalle`:
+- **OK**: todo responde.
+- **DEGRADADO** (200): falla RabbitMQ o Redis, o hay eventos esperando hace más de un minuto. M6
+  sigue atendiendo: los eventos esperan en la bandeja y se procesa sin idempotencia.
+- **ERROR** (503): falla PostgreSQL. Sin base, M6 no puede atender.
+
+Un componente apagado por configuración (por ejemplo, `IDEMPOTENCIA=memoria`) figura como
+`NO_CONFIGURADO`. Los mensajes de error nunca muestran usuarios ni claves.
+
+### Logs estructurados y correlación
+
+- Con `LOG_FORMATO=json` (el que usa Docker), **cada línea de log es un JSON** con `momento`,
+  `nivel`, `contexto`, `mensaje` y, si ocurrió durante un pedido, **`idCorrelacion`, `viajeId` y
+  `reservaId`**.
+- Cada pedido HTTP deja una línea con método, ruta, estado, duración y rol, sin token, cuerpo ni
+  coordenadas (RNF-19). Por ejemplo:
+  ```json
+  {"momento":"...","nivel":"info","contexto":"Pedidos","mensaje":"POST /viajes 201","idCorrelacion":"demo-123","viajeId":"5cc3...","metodo":"POST","ruta":"/viajes","estado":201,"duracionMs":13,"rol":"SERVICIO"}
+  ```
+- **Cómo funciona por dentro:** el middleware de correlación abre un "contexto del pedido" con
+  `AsyncLocalStorage` (Node). Cualquier log dentro de ese pedido lo hereda solo, sin pasar el id a
+  mano. Un interceptor le agrega el `viajeId` de la ruta o de la respuesta.
+- Para seguir un viaje: `npm run docker:logs | grep '"viajeId":"<id>"'`.
+- Con `LOG_FORMATO=texto` (el de `.env.example`) se ven como antes, más cómodos para programar.
+
+### 🐛 Bug importante encontrado al probar
+
+Para probar `/salud/detalle` se fueron apagando las dependencias una por una. **Al apagar
+PostgreSQL, el servicio entero se caía.** El pool de conexiones de `pg` emite un evento `error`
+cuando la base corta una conexión, y si nadie lo escucha, Node termina el proceso. El bug venía
+desde el paso 8.
+
+**Corrección:** se agregó un manejador (`pool.on('error', ...)`) que sólo deja un aviso en el log.
+Ahora, con la base caída, los pedidos fallan y `/salud/detalle` responde `ERROR`. Cuando la base
+vuelve, todo se recupera solo.
+
+✅ **Pruebas:**
+- **Tests nuevos:**
+  - el logger escribe JSON válido, con correlación y stack de errores;
+  - salud `OK`, `ERROR` (con timeout y sin credenciales) y `DEGRADADO` (RabbitMQ y Redis caídos, o
+    eventos viejos);
+  - `/salud/detalle` en la API;
+  - cada pedido queda registrado con `idCorrelacion` y `viajeId`, y nunca con el token.
+- **Totales:** 54 unitarios y 58 de integración contra la infraestructura real.
+- **Prueba manual apagando dependencias:**
+
+  | Estado de la infraestructura | `/salud/detalle` |
+  |---|---|
+  | Todo levantado | `OK` (200) |
+  | Sin RabbitMQ | `DEGRADADO` (200) |
+  | Sin RabbitMQ ni Redis | `DEGRADADO` (200) |
+  | Sin nada | `ERROR` (503), **con el proceso vivo** |
+  | Todo de vuelta | `OK` (200), sin reiniciar el servicio |
+
+- En contenedores, los logs salieron en JSON y `/salud/detalle` vio las tres dependencias en `OK`.
+
+---
+
 ## Problemas que aparecieron al probar y cómo se resolvieron
 
 | Síntoma | Causa | Solución |
@@ -582,6 +653,7 @@ para datos que vencen solos.
 | **403** `PROHIBIDO` al crear el viaje | Se usó el token de CLIENTE y después el de CONDUCTOR; crear viajes sólo lo puede hacer SERVICIO | Logout y Authorize con el token de **SERVICIO**. |
 | **200** en lugar de 201 al crear | El viaje ya se había creado en un Execute anterior con el mismo `asignacionId` | Es el comportamiento esperado (idempotencia). Para otro viaje, cambiar `solicitudId` y `asignacionId`. |
 | Las consultas SQL "no hacían nada" | Se escribieron en la terminal donde corría el servidor | Abrir otra terminal con **+** y correr `npm run db:consola` ahí. |
+| El servicio se caía entero al apagar PostgreSQL | El pool de `pg` emitía un evento `error` sin manejador | `pool.on('error', ...)` en `conexion.ts`; ahora se recupera solo |
 | Los primeros pedidos con `Idempotency-Key` fallaban con "Stream isn't writeable" | El cliente de Redis rechazaba comandos antes de terminar de conectarse | Esperar la conexión hasta 1 s antes de cada comando |
 | RabbitMQ rechazaba al usuario `guest` desde el contenedor del servicio | `guest` sólo puede conectarse desde la misma máquina | En docker compose se crea el usuario `m6` / `m6` |
 | `docker stop` tardaba 10 s y mataba el proceso | Node no cerraba la app al recibir SIGTERM | `app.enableShutdownHooks()` en `main.ts` |
@@ -628,8 +700,9 @@ grupo-5-dds/
 | RNF-09 Idempotencia (TP2) | ✅ en M6 | `Idempotency-Key` en Redis, creación por `asignacionId`, eventos con `idEvento` |
 | RNF-10 Mensajería (TP2) | ✅ | RabbitMQ + outbox, ADR-003 |
 | RNF-11 Caché y vencimiento (TP2) | ✅ | Redis para `Idempotency-Key`, ADR-004 |
-| RNF-17 Automatización (TP2) | ✅ (confirmar en GitHub) | `.github/workflows/m6-viajes.yml` |
-| RNF-13 Resiliencia (TP2) | 🟡 Parcial | Timeouts con M8, RabbitMQ y Redis; eventos que esperan si el broker se cae; sin Redis se sigue operando |
+| RNF-14 Salud y diagnóstico (TP2) | ✅ | `/salud`, `/salud/detalle`, logs JSON con `idCorrelacion`/`viajeId` |
+| RNF-17 Automatización (TP2) | ✅ | `.github/workflows/m6-viajes.yml`, corridas en verde en GitHub |
+| RNF-13 Resiliencia (TP2) | ✅ | Timeouts con M8, RabbitMQ y Redis; eventos que esperan si el broker se cae; sin Redis se sigue operando; sobrevive a la caída de PostgreSQL |
 | RNF-20 Documentación | ✅ | README, docs/, ADRs |
 | RF-6.1 a RF-6.8 | ✅ | Dominio + API |
 
@@ -637,10 +710,10 @@ grupo-5-dds/
 
 1. **Mandar los mensajes** de `docs/acuerdos-con-otros-grupos.md`, empezando por M5, M8, M1 y el
    Grupo 12, y ajustar contratos y código según lo que se acuerde.
-2. **TP2:**
-   - **Salud y diagnóstico (RNF-14):** que `/salud` informe el estado de PostgreSQL, RabbitMQ y
-     Redis, y logs estructurados en JSON con el id de correlación.
-   - Confirmar en GitHub que el CI corre (pestaña **Actions**).
+2. **TP2 – lo que queda:**
+   - **Seguridad (RNF-12):** validar los tokens reales de M1 (cuando se acuerde el formato),
+     limitar la cantidad de pedidos por usuario y agregar headers de seguridad.
+   - **Integración distribuida (RNF-07):** probar M6 junto con los módulos de los otros grupos.
 
 ---
 

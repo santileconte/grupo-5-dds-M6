@@ -3,7 +3,14 @@ import { ESTADOS_TERMINALES } from '../dominio/tipos';
 import { Viaje, ViajeProps } from '../dominio/viaje';
 import { ConflictoConcurrenciaError, ViajeNoEncontradoError } from '../aplicacion/errores';
 import { SobreEvento } from '../aplicacion/eventos';
-import { BandejaDeSalida, FiltrosViajes, PaginaDeViajes, RepositorioViajes, ResultadoLote } from '../aplicacion/puertos';
+import {
+  BandejaDeSalida,
+  FiltrosViajes,
+  PaginaDeViajes,
+  RepositorioViajes,
+  ResultadoLote,
+  ResumenPendientes,
+} from '../aplicacion/puertos';
 
 /**
  * Repositorio en memoria (PERSISTENCIA=memoria). Sirve para desarrollar y probar sin base de datos;
@@ -88,5 +95,10 @@ export class RepositorioViajesEnMemoria implements RepositorioViajes, BandejaDeS
       resultado.publicados += 1;
     }
     return resultado;
+  }
+
+  async resumenPendientes(): Promise<ResumenPendientes> {
+    const primero = this.pendientes[0];
+    return { cantidad: this.pendientes.length, masAntiguo: primero ? new Date(primero.ocurridoEn) : null };
   }
 }

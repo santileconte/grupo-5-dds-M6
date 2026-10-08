@@ -42,6 +42,10 @@ export function validarConfiguracion(env: Record<string, unknown>): Record<strin
     errores.push('REDIS_URL es obligatoria cuando IDEMPOTENCIA=redis');
   }
 
+  if (env.LOG_FORMATO !== undefined && env.LOG_FORMATO !== 'json' && env.LOG_FORMATO !== 'texto') {
+    errores.push('LOG_FORMATO debe ser "json" o "texto"');
+  }
+
   for (const nombre of ['REDIS_TIMEOUT_MS', 'OUTBOX_INTERVALO_MS', 'OUTBOX_TAMANIO_LOTE', 'RABBITMQ_TIMEOUT_MS', 'PUERTO', 'ESPERA_MINIMA_ARRIBO_MINUTOS', 'M8_TIMEOUT_MS']) {
     if (env[nombre] !== undefined && !(Number(env[nombre]) >= 0)) {
       errores.push(`${nombre} debe ser un número`);

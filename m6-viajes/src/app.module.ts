@@ -1,14 +1,16 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { AutenticacionGuard } from './comun/autenticacion.guard';
 import { CorrelacionMiddleware } from './comun/correlacion.middleware';
 import { IdempotenciaModule } from './comun/idempotencia/idempotencia.module';
 import { ProblemasFilter } from './comun/problemas.filter';
+import { ContextoPedidoInterceptor } from './comun/registro/contexto-pedido.interceptor';
 import { crearValidacionPipe } from './comun/validacion.pipe';
 import { validarConfiguracion } from './configuracion';
 import { RaizController, SaludController } from './salud/salud.controller';
+import { SaludService } from './salud/salud.service';
 import { ViajesModule } from './viajes/viajes.module';
 
 @Module({
@@ -28,6 +30,8 @@ import { ViajesModule } from './viajes/viajes.module';
     { provide: APP_GUARD, useClass: AutenticacionGuard },
     { provide: APP_FILTER, useClass: ProblemasFilter },
     { provide: APP_PIPE, useFactory: crearValidacionPipe },
+    { provide: APP_INTERCEPTOR, useClass: ContextoPedidoInterceptor },
+    SaludService,
   ],
 })
 export class AppModule implements NestModule {

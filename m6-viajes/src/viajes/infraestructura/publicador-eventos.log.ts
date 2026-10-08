@@ -13,6 +13,13 @@ export class PublicadorEventosEnLog implements PublicadorEventos {
 
   async publicar(evento: SobreEvento, routingKey: string): Promise<void> {
     this.publicados.push(evento);
-    this.logger.log(`${routingKey} ${JSON.stringify(evento)}`);
+    // Con LOG_FORMATO=json, cada campo queda separado y se puede filtrar (por ejemplo por viajeId).
+    this.logger.log({
+      mensaje: `Evento ${evento.tipo} (${routingKey})`,
+      idCorrelacion: evento.idCorrelacion,
+      viajeId: evento.datos.viajeId,
+      idEvento: evento.idEvento,
+      evento,
+    });
   }
 }
