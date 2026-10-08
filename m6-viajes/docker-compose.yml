@@ -1,0 +1,23 @@
+# Dependencias de M6 para desarrollo local. Uso: npm run db:levantar
+# Las credenciales por defecto son sólo para desarrollo; se pueden cambiar con variables de entorno (RNF-06).
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-m6}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-m6}
+      POSTGRES_DB: m6_viajes
+    ports:
+      - "${POSTGRES_PUERTO:-5432}:5432"
+    volumes:
+      - datos-postgres:/var/lib/postgresql/data
+      # Crea también la base m6_viajes_test para `npm run test:postgres`.
+      - ./docker/postgres/crear-base-de-tests.sql:/docker-entrypoint-initdb.d/01-crear-base-de-tests.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d m6_viajes"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  datos-postgres:

@@ -18,6 +18,14 @@ export function validarConfiguracion(env: Record<string, unknown>): Record<strin
     errores.push('M8_URL es obligatoria cuando VALIDADOR_QR=m8');
   }
 
+  const persistencia = env.PERSISTENCIA ?? 'memoria';
+  if (persistencia !== 'memoria' && persistencia !== 'postgres') {
+    errores.push('PERSISTENCIA debe ser "memoria" o "postgres"');
+  }
+  if (persistencia === 'postgres' && !env.BASE_DATOS_URL) {
+    errores.push('BASE_DATOS_URL es obligatoria cuando PERSISTENCIA=postgres');
+  }
+
   for (const nombre of ['PUERTO', 'ESPERA_MINIMA_ARRIBO_MINUTOS', 'M8_TIMEOUT_MS']) {
     if (env[nombre] !== undefined && !(Number(env[nombre]) >= 0)) {
       errores.push(`${nombre} debe ser un número`);

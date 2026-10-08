@@ -5,6 +5,8 @@ import { Test } from '@nestjs/testing';
 import { AppModule } from '../src/app.module';
 import { PUBLICADOR_EVENTOS, VALIDADOR_CODIGO, ValidadorCodigoVerificacion } from '../src/viajes/aplicacion/puertos';
 import { PublicadorEventosEnLog } from '../src/viajes/infraestructura/publicador-eventos.log';
+import { Pool } from 'pg';
+import { POOL_POSTGRES } from '../src/viajes/infraestructura/postgres/conexion';
 import { SECRETO_TESTS } from './entorno';
 
 
@@ -22,6 +24,11 @@ export async function crearApp(validador?: ValidadorCodigoVerificacion): Promise
   const modulo = await builder.compile();
   const app = modulo.createNestApplication({ logger: false });
   await app.init();
+  const pool = app.get<Pool | null>(POOL_POSTGRES);
+  if (pool) {
+    // Cada archivo de tests arranca con la base vacía (TRUNCATE no dispara el trigger del historial).
+    await pool.query('TRUNCATE transiciones_viaje, viajes');
+  }
   return { app, eventos: app.get(PUBLICADOR_EVENTOS) };
 }
 

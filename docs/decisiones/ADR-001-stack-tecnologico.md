@@ -23,7 +23,7 @@ framework de backend.
 - **Tests:** Jest con ts-jest.
 - **Contratos:** OpenAPI 3.1 (API síncrona) y AsyncAPI 3.0 (eventos), validados con Redocly CLI y
   `@asyncapi/parser`.
-- **Base de datos (a confirmar en el próximo paso):** PostgreSQL, para tener transacciones y
+- **Base de datos:** PostgreSQL (ver ADR-002), para tener transacciones y
   actualizaciones condicionales por versión.
 
 ## Justificación

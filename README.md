@@ -17,17 +17,35 @@ estados del viaje, arribo, inicio, finalización, cancelación y auditoría.
 
 ## Servicio `m6-viajes`
 
-Requisitos: Node.js 22 (ver `.nvmrc`).
+Requisitos:
+- Node.js 22 (ver `.nvmrc`).
+- Docker, para la base de datos. En GitHub Codespaces ya viene instalado.
 
 ```bash
 cd m6-viajes
 cp .env.example .env         # configuración local (sólo la primera vez)
 npm ci                       # instala las dependencias exactas del lockfile
-npm test                     # tests unitarios y de integración
-npm run typecheck            # chequeo de tipos
-npm run contratos:validar    # valida el OpenAPI y el AsyncAPI
+npm run db:levantar          # levanta PostgreSQL en Docker (queda corriendo en segundo plano)
 npm run start:dev            # levanta el servicio en http://localhost:3000
 ```
+
+Al arrancar, el servicio crea las tablas que falten (migraciones de `migraciones/`). Los datos
+quedan guardados aunque reinicies el servicio o el Codespace.
+
+### Comandos útiles
+
+| Comando | Para qué |
+|---|---|
+| `npm test` | Tests unitarios y de integración (con repositorio en memoria, no necesita la base) |
+| `npm run test:postgres` | Tests de integración y del repositorio contra PostgreSQL (necesita `db:levantar`) |
+| `npm run typecheck` | Chequeo de tipos |
+| `npm run contratos:validar` | Valida el OpenAPI y el AsyncAPI |
+| `npm run db:levantar` / `db:detener` | Levanta o detiene PostgreSQL |
+| `npm run db:consola` | Abre `psql` dentro de la base, por ejemplo para `SELECT * FROM viajes;` |
+| `npm run token -- <ROL> [id]` | Genera un token de prueba |
+
+Para trabajar **sin Docker**, poné `PERSISTENCIA=memoria` en `.env`. Los datos se pierden al
+reiniciar.
 
 ### Cómo probar la API desde el navegador
 
@@ -52,8 +70,6 @@ npm run start:dev            # levanta el servicio en http://localhost:3000
 5. Los eventos que en TP2 irán a RabbitMQ aparecen por ahora en la terminal del servicio,
    con la etiqueta `[Eventos]`.
 
-Los datos se guardan **en memoria**: se pierden al reiniciar el servicio.
-
 ### Estructura
 
 ```
@@ -71,9 +87,12 @@ m6-viajes/
 │   └── viajes/
 │       ├── dominio/                   # reglas de negocio puras (sin NestJS)
 │       ├── aplicacion/                # casos de uso (ViajesService), puertos, eventos
-│       ├── infraestructura/           # implementaciones: repositorio en memoria, eventos al log, QR
+│       ├── infraestructura/           # implementaciones: repositorios, eventos al log, QR
+│       │   └── postgres/              # repositorio PostgreSQL, conexión y migraciones
 │       ├── http/                      # controlador, DTOs y formato de respuestas
 │       └── viajes.module.ts           # elige qué implementación usa cada puerto
+├── migraciones/                       # esquema de la base, en archivos SQL numerados
+├── docker-compose.yml                 # PostgreSQL para desarrollo
 ├── test/                              # tests de integración (levantan la app y llaman por HTTP)
 └── scripts/                           # generar tokens y validar el AsyncAPI
 ```
@@ -87,6 +106,8 @@ m6-viajes/
 | Variable | Descripción | Por defecto |
 |---|---|---|
 | `PUERTO` | Puerto HTTP | `3000` |
+| `PERSISTENCIA` | `postgres` o `memoria` | `memoria` |
+| `BASE_DATOS_URL` | Conexión a PostgreSQL, si `PERSISTENCIA=postgres` | — |
 | `JWT_SECRETO` | Secreto para verificar los JWT (obligatorio, ≥ 16 caracteres) | — |
 | `ESPERA_MINIMA_ARRIBO_MINUTOS` | Espera antes de cancelar por `CLIENTE_NO_SE_PRESENTO` | `5` |
 | `VALIDADOR_QR` | `simulado` (código `QR-<viajeId>`) o `m8` | `simulado` |
@@ -100,6 +121,6 @@ m6-viajes/
 - [x] Controladores HTTP de todos los endpoints del contrato, con autenticación JWT, errores
       problem+json, `ETag`/`If-Match`, `Idempotency-Key` y tests de integración
 - [ ] Acordar contratos con M5, M7, M8, M1 y el Grupo 12 (ver pendientes en la máquina de estados)
-- [ ] Persistencia en PostgreSQL (reemplaza al repositorio en memoria)
+- [x] Persistencia en PostgreSQL con migraciones, control de versión e historial inmutable
 - [ ] Dockerfile y docker-compose
 - [ ] Publicación de eventos en RabbitMQ con outbox (TP2)

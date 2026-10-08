@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Pool } from 'pg';
 import {
   CONFIGURACION_VIAJES,
   PUBLICADOR_EVENTOS,
@@ -11,19 +12,35 @@ import { ViajesService } from './aplicacion/viajes.service';
 import { ConfiguracionViaje } from './dominio/viaje';
 import { ViajesController } from './http/viajes.controller';
 import { PublicadorEventosEnLog } from './infraestructura/publicador-eventos.log';
+import { CierrePoolPostgres, crearPoolPostgres, POOL_POSTGRES } from './infraestructura/postgres/conexion';
+import { RepositorioViajesPostgres } from './infraestructura/postgres/repositorio-viajes.postgres';
 import { RepositorioViajesEnMemoria } from './infraestructura/repositorio-viajes.memoria';
 import { ValidadorCodigoM8 } from './infraestructura/validador-codigo.m8';
 import { ValidadorCodigoSimulado } from './infraestructura/validador-codigo.simulado';
 
 /**
  * Arma el módulo de viajes: acá se decide qué implementación usa cada puerto.
- * Para pasar a PostgreSQL o RabbitMQ sólo hay que cambiar el `useClass` correspondiente.
+ * El repositorio se elige con PERSISTENCIA: `postgres` (por defecto en .env.example) o `memoria`.
  */
 @Module({
   controllers: [ViajesController],
   providers: [
     ViajesService,
-    { provide: REPOSITORIO_VIAJES, useClass: RepositorioViajesEnMemoria },
+    {
+      provide: POOL_POSTGRES,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService): Promise<Pool> | null =>
+        config.get('PERSISTENCIA', 'memoria') === 'postgres'
+          ? crearPoolPostgres(config.getOrThrow('BASE_DATOS_URL'))
+          : null,
+    },
+    CierrePoolPostgres,
+    {
+      provide: REPOSITORIO_VIAJES,
+      inject: [POOL_POSTGRES],
+      useFactory: (pool: Pool | null) =>
+        pool ? new RepositorioViajesPostgres(pool) : new RepositorioViajesEnMemoria(),
+    },
     { provide: PUBLICADOR_EVENTOS, useClass: PublicadorEventosEnLog },
     { provide: RELOJ, useValue: { ahora: () => new Date() } },
     {
