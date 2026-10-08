@@ -1,8 +1,10 @@
-# Dependencias de M6 para desarrollo local. Uso: npm run db:levantar
-# Las credenciales por defecto son sólo para desarrollo; se pueden cambiar con variables de entorno (RNF-06).
+# M6 completo para desarrollo local: PostgreSQL + servicio.
+#   npm run db:levantar       → sólo la base (para usar con `npm run start:dev`)
+#   npm run docker:levantar   → base + servicio en contenedores (no hace falta Node instalado)
+# Los valores se toman de m6-viajes/.env. Las credenciales por defecto son sólo para desarrollo (RNF-06).
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine3.24
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-m6}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-m6}
@@ -18,6 +20,26 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+
+  m6-viajes:
+    # Imagen versionada (RNF-04). El contexto es la raíz del repo porque la imagen incluye contratos/.
+    image: grupo5/m6-viajes:0.1.0
+    build:
+      context: ..
+      dockerfile: m6-viajes/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PUERTO: 3000
+      PERSISTENCIA: postgres
+      # Dentro de la red de Docker la base se llama "postgres", no "localhost".
+      BASE_DATOS_URL: postgres://${POSTGRES_USER:-m6}:${POSTGRES_PASSWORD:-m6}@postgres:5432/m6_viajes
+      JWT_SECRETO: "${JWT_SECRETO:?Falta JWT_SECRETO - copiá .env.example a .env}"
+      VALIDADOR_QR: ${VALIDADOR_QR:-simulado}
+      ESPERA_MINIMA_ARRIBO_MINUTOS: ${ESPERA_MINIMA_ARRIBO_MINUTOS:-5}
+    ports:
+      - "${PUERTO:-3000}:3000"
 
 volumes:
   datos-postgres:

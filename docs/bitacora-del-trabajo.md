@@ -299,6 +299,60 @@ un viaje en Swagger, devolvió el viaje `27829121-...` en estado `ASIGNADO`, ver
 
 ---
 
+## Paso 9 – Dockerfile: el servicio en un contenedor
+
+**Qué es:** el `Dockerfile` describe cómo armar una **imagen** del servicio: un paquete con Node,
+el código compilado y sus dependencias, listo para correr igual en cualquier máquina. Es lo que
+pide RNF-04: "imágenes OCI reproducibles y versionadas".
+
+📄 [`m6-viajes/Dockerfile`](../m6-viajes/Dockerfile)
+
+**Cómo está armado (dos etapas):**
+1. **Compilación:** instala todas las dependencias, compila TypeScript a JavaScript y después
+   borra las dependencias de desarrollo.
+2. **Ejecución:** parte de una imagen limpia y copia sólo lo necesario para correr: `dist/`,
+   `node_modules` de producción, `migraciones/` y el contrato OpenAPI (para `/docs`). No lleva
+   TypeScript ni tests.
+
+**Decisiones:**
+- **Reproducible:** la imagen base tiene versión exacta (`node:22.23.3-alpine3.24`), lo mismo que
+  PostgreSQL (`postgres:16.15-alpine3.24`). Las dependencias se instalan con `npm ci` desde el
+  lockfile.
+- **Versionada:** la imagen se llama `grupo5/m6-viajes:0.1.0`.
+- **Se construye desde la raíz del repo**, porque necesita también `contratos/`. Dentro de la
+  imagen se respeta la misma estructura de carpetas que en el repositorio.
+- **No corre como root:** usa el usuario `node`.
+- **Health check:** Docker consulta `/salud` y marca el contenedor como `healthy`.
+- **Sin secretos adentro:** toda la configuración llega por variables de entorno (RNF-06). El
+  archivo `.dockerignore` evita que `.env` o `node_modules` entren en la imagen.
+
+**docker-compose.yml** ahora levanta dos servicios:
+- `postgres`: la base, como antes.
+- `m6-viajes`: el servicio. Espera a que la base esté `healthy`, se conecta a ella por el nombre
+  `postgres` (dentro de la red de Docker no es `localhost`) y toma `JWT_SECRETO` del `.env`.
+
+```bash
+cd m6-viajes
+cp .env.example .env
+npm run docker:levantar     # = docker compose up -d --build --wait
+npm run docker:logs         # ver los logs del servicio
+npm run docker:detener      # apagar todo (los datos quedan en el volumen)
+```
+
+**Ajuste que surgió al probar:** al detener el contenedor, Docker tardaba 10 segundos y terminaba
+matando el proceso, porque el servicio no escuchaba la señal de apagado. Se agregó
+`app.enableShutdownHooks()` en `main.ts`. Ahora se detiene al instante y cierra las conexiones a la
+base (en el log aparece `[PostgreSQL] Conexiones cerradas`).
+
+✅ **Prueba:**
+- se construyó la imagen;
+- `docker compose up` dejó los dos contenedores `healthy`;
+- las migraciones se aplicaron solas, `/salud` y `/docs` respondieron;
+- se creó un viaje y se registró el arribo;
+- se reinició el contenedor y el viaje seguía en `CONDUCTOR_ARRIBADO`, versión 2.
+
+---
+
 ## Problemas que aparecieron al probar y cómo se resolvieron
 
 | Síntoma | Causa | Solución |
@@ -310,6 +364,7 @@ un viaje en Swagger, devolvió el viaje `27829121-...` en estado `ASIGNADO`, ver
 | **403** `PROHIBIDO` al crear el viaje | Se usó el token de CLIENTE y después el de CONDUCTOR; crear viajes sólo lo puede hacer SERVICIO | Logout y Authorize con el token de **SERVICIO**. |
 | **200** en lugar de 201 al crear | El viaje ya se había creado en un Execute anterior con el mismo `asignacionId` | Es el comportamiento esperado (idempotencia). Para otro viaje, cambiar `solicitudId` y `asignacionId`. |
 | Las consultas SQL "no hacían nada" | Se escribieron en la terminal donde corría el servidor | Abrir otra terminal con **+** y correr `npm run db:consola` ahí. |
+| `docker stop` tardaba 10 s y mataba el proceso | Node no cerraba la app al recibir SIGTERM | `app.enableShutdownHooks()` en `main.ts` |
 | GitHub rechazó un push ("Push cannot contain secrets") | Falso positivo: tomó un UUID de ejemplo escrito después de la palabra "token" como si fuera un token de npm | Se reemplazó el ejemplo por `<conductorId>`. |
 
 ---
@@ -331,7 +386,8 @@ grupo-5-dds/
     ├── src/                          # código (dominio, aplicación, infraestructura, http, común)
     ├── test/                         # tests de integración
     ├── migraciones/                  # esquema de la base
-    ├── docker-compose.yml            # PostgreSQL local
+    ├── Dockerfile                    # imagen del servicio
+    ├── docker-compose.yml            # PostgreSQL + servicio
     └── .env.example                  # plantilla de configuración
 ```
 
@@ -342,7 +398,7 @@ grupo-5-dds/
 | RNF-01 Stack justificado | ✅ | ADR-001 |
 | RNF-02 Módulo con límites claros | ✅ | `m6-viajes/` |
 | RNF-03 Contratos OpenAPI y eventos | ✅ | `contratos/` |
-| RNF-04 Imagen de contenedor del servicio | ⏳ Pendiente | Próximo paso: Dockerfile |
+| RNF-04 Imagen de contenedor del servicio | ✅ | `m6-viajes/Dockerfile`, imagen `grupo5/m6-viajes:0.1.0` |
 | RNF-05 Persistencia propia | ✅ | PostgreSQL, ADR-002 |
 | RNF-06 Configuración externa | ✅ | `.env` / `.env.example` |
 | RNF-07 Tests unitarios y de integración | ✅ | `npm test`, `npm run test:postgres` |
@@ -352,12 +408,10 @@ grupo-5-dds/
 
 ## Próximos pasos
 
-1. **Dockerfile del servicio** (RNF-04), para levantar M6 y la base con un solo
-   `docker compose up`.
-2. **Acordar contratos** con M5 (creación del viaje), M8 (validación del QR), M7 (datos para el
+1. **Acordar contratos** con M5 (creación del viaje), M8 (validación del QR), M7 (datos para el
    cargo), M1 (formato del token) y el Grupo 12 (la otra implementación de M6). La lista está en
    `docs/m6/maquina-de-estados.md`.
-3. **TP2:**
+2. **TP2:**
    - publicar los eventos en RabbitMQ con el patrón *outbox*;
    - pasar la idempotencia a Redis;
    - agregar health checks y logs estructurados;

@@ -15,7 +15,10 @@
     "test:postgres": "TEST_PERSISTENCIA=postgres jest --config test/jest-e2e.json --runInBand",
     "db:levantar": "docker compose up -d --wait postgres",
     "db:detener": "docker compose stop postgres",
-    "db:consola": "docker compose exec postgres psql -U m6 -d m6_viajes"
+    "db:consola": "docker compose exec postgres psql -U m6 -d m6_viajes",
+    "docker:levantar": "docker compose up -d --build --wait",
+    "docker:detener": "docker compose down",
+    "docker:logs": "docker compose logs -f m6-viajes"
   },
   "author": "",
   "license": "UNLICENSED",

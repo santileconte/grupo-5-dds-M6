@@ -22,6 +22,8 @@ Requisitos:
 - Node.js 22 (ver `.nvmrc`).
 - Docker, para la base de datos. En GitHub Codespaces ya viene instalado.
 
+### Opción A: servicio con Node y base en Docker (para programar)
+
 ```bash
 cd m6-viajes
 cp .env.example .env         # configuración local (sólo la primera vez)
@@ -33,6 +35,18 @@ npm run start:dev            # levanta el servicio en http://localhost:3000
 Al arrancar, el servicio crea las tablas que falten (migraciones de `migraciones/`). Los datos
 quedan guardados aunque reinicies el servicio o el Codespace.
 
+### Opción B: todo en contenedores (sin Node)
+
+```bash
+cd m6-viajes
+cp .env.example .env         # sólo la primera vez
+npm run docker:levantar      # construye la imagen y levanta base + servicio
+```
+
+Equivale a `docker compose up -d --build --wait`; si no tenés Node, podés correr ese comando
+directamente. El servicio queda en http://localhost:3000, igual que con `start:dev`. No uses las
+dos opciones a la vez, porque las dos usan el puerto 3000.
+
 ### Comandos útiles
 
 | Comando | Para qué |
@@ -41,7 +55,9 @@ quedan guardados aunque reinicies el servicio o el Codespace.
 | `npm run test:postgres` | Tests de integración y del repositorio contra PostgreSQL (necesita `db:levantar`) |
 | `npm run typecheck` | Chequeo de tipos |
 | `npm run contratos:validar` | Valida el OpenAPI y el AsyncAPI |
-| `npm run db:levantar` / `db:detener` | Levanta o detiene PostgreSQL |
+| `npm run db:levantar` / `db:detener` | Levanta o detiene sólo PostgreSQL |
+| `npm run docker:levantar` / `docker:detener` | Levanta o detiene base + servicio en contenedores |
+| `npm run docker:logs` | Muestra los logs del servicio en contenedor |
 | `npm run db:consola` | Abre `psql` dentro de la base, por ejemplo para `SELECT * FROM viajes;` |
 | `npm run token -- <ROL> [id]` | Genera un token de prueba |
 
@@ -93,7 +109,8 @@ m6-viajes/
 │       ├── http/                      # controlador, DTOs y formato de respuestas
 │       └── viajes.module.ts           # elige qué implementación usa cada puerto
 ├── migraciones/                       # esquema de la base, en archivos SQL numerados
-├── docker-compose.yml                 # PostgreSQL para desarrollo
+├── Dockerfile                         # imagen OCI del servicio (se construye desde la raíz)
+├── docker-compose.yml                 # PostgreSQL + servicio para desarrollo
 ├── test/                              # tests de integración (levantan la app y llaman por HTTP)
 └── scripts/                           # generar tokens y validar el AsyncAPI
 ```
@@ -123,5 +140,5 @@ m6-viajes/
       problem+json, `ETag`/`If-Match`, `Idempotency-Key` y tests de integración
 - [ ] Acordar contratos con M5, M7, M8, M1 y el Grupo 12 (ver pendientes en la máquina de estados)
 - [x] Persistencia en PostgreSQL con migraciones, control de versión e historial inmutable
-- [ ] Dockerfile y docker-compose
+- [x] Dockerfile (imagen versionada `grupo5/m6-viajes:0.1.0`) y docker-compose con base + servicio
 - [ ] Publicación de eventos en RabbitMQ con outbox (TP2)

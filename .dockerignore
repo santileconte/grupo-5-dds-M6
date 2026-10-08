@@ -1,0 +1,8 @@
+# Lo que NO se envía a Docker al construir la imagen (el contexto es la raíz del repo).
+**/node_modules
+**/dist
+**/coverage
+**/.env
+**/.env.*
+.git
+docs
