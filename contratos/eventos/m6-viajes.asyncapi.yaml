@@ -1,0 +1,501 @@
+asyncapi: 3.0.0
+info:
+  title: M6 - Viajes y Ciclo de Vida (eventos)
+  version: 0.1.0
+  description: |
+    Eventos que **publica** el módulo M6 (Grupo 5). Es el aporte de M6 al catálogo común de
+    eventos del consorcio (RNF-03). El índice legible está en `docs/catalogo-eventos.md`.
+
+    **Convenciones**
+    - Broker: RabbitMQ (RNF-10, TP2). Exchange `movilidad.eventos`, de tipo `topic` y durable.
+    - Routing key: `<modulo>.<entidad>.<hecho-en-pasado>`, por ejemplo `viajes.viaje.finalizado`.
+      Cada consumidor crea su propia cola y la enlaza con las routing keys que le interesan
+      (por ejemplo `viajes.#`).
+    - Todos los mensajes usan el mismo sobre (`SobreEvento`). Los datos propios del evento van en `datos`.
+    - Entrega **al menos una vez**: un evento puede llegar repetido. Los consumidores deben
+      descartar duplicados por `idEvento` (RNF-09).
+    - Orden: sólo se garantiza por viaje. Si llega un evento de un viaje con `versionViaje`
+      menor o igual a la última procesada, se puede ignorar.
+    - Privacidad (RNF-19, RF-4.7): los eventos no llevan coordenadas, direcciones, datos personales
+      ni el código QR. Quien necesite más datos consulta `GET /viajes/{viajeId}` con sus permisos.
+    - Versionado: un cambio incompatible incrementa `version` y se publica en paralelo con la versión
+      anterior durante la transición.
+defaultContentType: application/json
+
+servers:
+  local:
+    host: localhost:5672
+    protocol: amqp
+    description: RabbitMQ local (docker compose del equipo integrador).
+
+channels:
+  viajeCreado:
+    address: viajes.viaje.creado
+    title: Viaje creado
+    messages:
+      ViajeCreado:
+        $ref: '#/components/messages/ViajeCreado'
+    bindings:
+      $ref: '#/components/channelBindings/exchangeMovilidad'
+  conductorArribado:
+    address: viajes.conductor.arribado
+    title: Conductor arribado
+    messages:
+      ConductorArribado:
+        $ref: '#/components/messages/ConductorArribado'
+    bindings:
+      $ref: '#/components/channelBindings/exchangeMovilidad'
+  viajeIniciado:
+    address: viajes.viaje.iniciado
+    title: Viaje iniciado
+    messages:
+      ViajeIniciado:
+        $ref: '#/components/messages/ViajeIniciado'
+    bindings:
+      $ref: '#/components/channelBindings/exchangeMovilidad'
+  viajeFinalizado:
+    address: viajes.viaje.finalizado
+    title: Viaje finalizado
+    messages:
+      ViajeFinalizado:
+        $ref: '#/components/messages/ViajeFinalizado'
+    bindings:
+      $ref: '#/components/channelBindings/exchangeMovilidad'
+  viajeCancelado:
+    address: viajes.viaje.cancelado
+    title: Viaje cancelado
+    messages:
+      ViajeCancelado:
+        $ref: '#/components/messages/ViajeCancelado'
+    bindings:
+      $ref: '#/components/channelBindings/exchangeMovilidad'
+
+operations:
+  publicarViajeCreado:
+    action: send
+    bindings:
+      $ref: '#/components/operationBindings/publicacionPersistente'
+    channel:
+      $ref: '#/channels/viajeCreado'
+    summary: Se publica al crear el viaje (estado ASIGNADO).
+    messages:
+      - $ref: '#/channels/viajeCreado/messages/ViajeCreado'
+  publicarConductorArribado:
+    action: send
+    bindings:
+      $ref: '#/components/operationBindings/publicacionPersistente'
+    channel:
+      $ref: '#/channels/conductorArribado'
+    summary: Se publica cuando el conductor registra el arribo.
+    messages:
+      - $ref: '#/channels/conductorArribado/messages/ConductorArribado'
+  publicarViajeIniciado:
+    action: send
+    bindings:
+      $ref: '#/components/operationBindings/publicacionPersistente'
+    channel:
+      $ref: '#/channels/viajeIniciado'
+    summary: Se publica cuando el viaje pasa a EN_CURSO.
+    messages:
+      - $ref: '#/channels/viajeIniciado/messages/ViajeIniciado'
+  publicarViajeFinalizado:
+    action: send
+    bindings:
+      $ref: '#/components/operationBindings/publicacionPersistente'
+    channel:
+      $ref: '#/channels/viajeFinalizado'
+    summary: Se publica cuando el viaje pasa a FINALIZADO.
+    messages:
+      - $ref: '#/channels/viajeFinalizado/messages/ViajeFinalizado'
+  publicarViajeCancelado:
+    action: send
+    bindings:
+      $ref: '#/components/operationBindings/publicacionPersistente'
+    channel:
+      $ref: '#/channels/viajeCancelado'
+    summary: Se publica cuando el viaje pasa a CANCELADO.
+    messages:
+      - $ref: '#/channels/viajeCancelado/messages/ViajeCancelado'
+
+components:
+  channelBindings:
+    exchangeMovilidad:
+      amqp:
+        is: routingKey
+        exchange:
+          name: movilidad.eventos
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: /
+        bindingVersion: 0.3.0
+
+  operationBindings:
+    publicacionPersistente:
+      amqp:
+        # 2 = persistente: el mensaje sobrevive a un reinicio del broker.
+        deliveryMode: 2
+        bindingVersion: 0.3.0
+
+  messages:
+    ViajeCreado:
+      name: ViajeCreado
+      title: Viaje creado
+      summary: Un conductor quedó asignado y el viaje comenzó su ciclo de vida.
+      description: |
+        **Consumidores sugeridos:**
+        - M8: notificar la asignación al cliente (RF-8.1) y generar el QR de un solo uso (RF-8.3).
+        - M9: vincular la reserva con el viaje, si `reservaId` no es nulo.
+      correlationId:
+        $ref: '#/components/correlationIds/porViaje'
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/SobreEvento'
+          - type: object
+            properties:
+              tipo:
+                const: ViajeCreado
+              datos:
+                $ref: '#/components/schemas/DatosViajeCreado'
+      examples:
+        - name: viajeCreado
+          payload:
+            idEvento: 2d5e1f0a-3b4c-4d5e-8f6a-7b8c9d0e1f2a
+            tipo: ViajeCreado
+            version: 1
+            ocurridoEn: '2026-10-08T12:00:00Z'
+            productor: m6-viajes
+            idCorrelacion: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
+            datos:
+              viajeId: 7b0e3a8e-4f7c-4d1a-9a52-1f0c2f9d6b11
+              versionViaje: 1
+              solicitudId: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
+              reservaId: null
+              clienteId: 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+              conductorId: 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+              vehiculoId: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5e
+              tipoVehiculo: AUTO
+              creadoEn: '2026-10-08T12:00:00Z'
+
+    ConductorArribado:
+      name: ConductorArribado
+      title: Conductor arribado
+      summary: El conductor llegó al punto de retiro.
+      description: |
+        **Consumidores sugeridos:**
+        - M8: avisar al cliente que el conductor llegó (RF-8.1).
+      correlationId:
+        $ref: '#/components/correlationIds/porViaje'
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/SobreEvento'
+          - type: object
+            properties:
+              tipo:
+                const: ConductorArribado
+              datos:
+                $ref: '#/components/schemas/DatosConductorArribado'
+
+    ViajeIniciado:
+      name: ViajeIniciado
+      title: Viaje iniciado
+      summary: Se validó el QR y el viaje está en curso.
+      description: |
+        **Consumidores sugeridos:**
+        - M8: notificar el inicio (RF-8.1).
+        - M7: autorizar el pago, si la regla acordada lo hace al inicio (RF-7.3).
+      correlationId:
+        $ref: '#/components/correlationIds/porViaje'
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/SobreEvento'
+          - type: object
+            properties:
+              tipo:
+                const: ViajeIniciado
+              datos:
+                $ref: '#/components/schemas/DatosViajeIniciado'
+
+    ViajeFinalizado:
+      name: ViajeFinalizado
+      title: Viaje finalizado
+      summary: El conductor cerró el viaje con distancia y duración.
+      description: |
+        **Consumidores sugeridos:**
+        - M7: calcular el importe final, capturar el pago y liquidar al conductor (RF-7.3, RF-7.8).
+        - M8: notificar la finalización y generar el comprobante (RF-8.1, RF-8.4).
+        - M2 y M3: habilitar las calificaciones del viaje (RF-2.5, RF-3.7).
+        - M4: liberar la disponibilidad del conductor (RF-4.4).
+        - M9: cerrar la reserva vinculada, si existe.
+      correlationId:
+        $ref: '#/components/correlationIds/porViaje'
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/SobreEvento'
+          - type: object
+            properties:
+              tipo:
+                const: ViajeFinalizado
+              datos:
+                $ref: '#/components/schemas/DatosViajeFinalizado'
+      examples:
+        - name: viajeFinalizado
+          payload:
+            idEvento: 6f7a8b9c-0d1e-4f2a-8b3c-4d5e6f7a8b9c
+            tipo: ViajeFinalizado
+            version: 1
+            ocurridoEn: '2026-10-08T12:22:00Z'
+            productor: m6-viajes
+            idCorrelacion: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
+            datos:
+              viajeId: 7b0e3a8e-4f7c-4d1a-9a52-1f0c2f9d6b11
+              versionViaje: 4
+              solicitudId: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
+              reservaId: null
+              clienteId: 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+              conductorId: 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+              tipoVehiculo: AUTO
+              iniciadoEn: '2026-10-08T12:07:00Z'
+              finalizadoEn: '2026-10-08T12:22:00Z'
+              distanciaRecorridaMetros: 4200
+              duracionSegundos: 900
+
+    ViajeCancelado:
+      name: ViajeCancelado
+      title: Viaje cancelado
+      summary: El viaje se canceló, con motivo y actor.
+      description: |
+        **Consumidores sugeridos:**
+        - M5: si `requiereRedespacho` es verdadero, volver a buscar conductor para la solicitud (RF-6.7).
+        - M7: decidir y registrar el cargo de cancelación, o el reintegro (RF-7.4, RF-7.5).
+        - M8: notificar la cancelación (RF-8.1).
+        - M4: liberar la disponibilidad del conductor (RF-4.4).
+        - M9: actualizar la reserva vinculada, si existe.
+      correlationId:
+        $ref: '#/components/correlationIds/porViaje'
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/SobreEvento'
+          - type: object
+            properties:
+              tipo:
+                const: ViajeCancelado
+              datos:
+                $ref: '#/components/schemas/DatosViajeCancelado'
+      examples:
+        - name: canceladoPorConductor
+          summary: El conductor cancela antes del arribo; la solicitud vuelve a despacho.
+          payload:
+            idEvento: 9c8b7a6f-5e4d-4c3b-8a29-1f0e9d8c7b6a
+            tipo: ViajeCancelado
+            version: 1
+            ocurridoEn: '2026-10-08T12:03:00Z'
+            productor: m6-viajes
+            idCorrelacion: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
+            datos:
+              viajeId: 7b0e3a8e-4f7c-4d1a-9a52-1f0c2f9d6b11
+              versionViaje: 2
+              solicitudId: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
+              reservaId: null
+              clienteId: 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+              conductorId: 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+              tipoVehiculo: AUTO
+              canceladoPor: CONDUCTOR
+              motivo: PROBLEMA_CON_VEHICULO
+              estadoAlCancelar: ASIGNADO
+              requiereRedespacho: true
+              creadoEn: '2026-10-08T12:00:00Z'
+              arriboEn: null
+              iniciadoEn: null
+              canceladoEn: '2026-10-08T12:03:00Z'
+
+  correlationIds:
+    porViaje:
+      description: Identificador de correlación de punta a punta (normalmente el de la solicitud o la reserva).
+      location: $message.payload#/idCorrelacion
+
+  schemas:
+    SobreEvento:
+      type: object
+      description: Sobre común a todos los eventos del consorcio.
+      required: [idEvento, tipo, version, ocurridoEn, productor, idCorrelacion, datos]
+      properties:
+        idEvento:
+          type: string
+          format: uuid
+          description: Único por evento. Se usa para descartar duplicados.
+        tipo:
+          type: string
+          description: Nombre del evento, en PascalCase.
+        version:
+          type: integer
+          minimum: 1
+          description: Versión del esquema de `datos`.
+        ocurridoEn:
+          type: string
+          format: date-time
+        productor:
+          type: string
+          description: Módulo que publica el evento.
+          examples: [m6-viajes]
+        idCorrelacion:
+          type: string
+          description: Se propaga desde el header `X-Correlation-Id` (RNF-14).
+        datos:
+          type: object
+
+    TipoVehiculo:
+      type: string
+      enum: [AUTO, MOTO]
+
+    EstadoViaje:
+      type: string
+      enum: [ASIGNADO, CONDUCTOR_ARRIBADO, EN_CURSO, FINALIZADO, CANCELADO]
+
+    Rol:
+      type: string
+      enum: [CLIENTE, CONDUCTOR, OPERADOR]
+
+    MotivoCancelacion:
+      type: string
+      enum:
+        - CAMBIO_DE_PLANES
+        - DEMORA_EXCESIVA
+        - CONDUCTOR_NO_SE_PRESENTO
+        - CLIENTE_NO_SE_PRESENTO
+        - PROBLEMA_CON_VEHICULO
+        - ORIGEN_INACCESIBLE
+        - INCIDENTE_DE_SEGURIDAD
+        - BLOQUEO_ADMINISTRATIVO
+        - OTRO
+
+    IdNullable:
+      oneOf:
+        - type: string
+          format: uuid
+        - type: 'null'
+
+    FechaNullable:
+      oneOf:
+        - type: string
+          format: date-time
+        - type: 'null'
+
+    DatosBaseViaje:
+      type: object
+      required: [viajeId, versionViaje, solicitudId, reservaId, clienteId, conductorId]
+      properties:
+        viajeId:
+          type: string
+          format: uuid
+        versionViaje:
+          type: integer
+          minimum: 1
+          description: Versión del viaje luego de la transición. Sirve para ordenar e ignorar eventos viejos.
+        solicitudId:
+          type: string
+          format: uuid
+        reservaId:
+          $ref: '#/components/schemas/IdNullable'
+        clienteId:
+          type: string
+          format: uuid
+        conductorId:
+          type: string
+          format: uuid
+
+    DatosViajeCreado:
+      allOf:
+        - $ref: '#/components/schemas/DatosBaseViaje'
+        - type: object
+          required: [vehiculoId, tipoVehiculo, creadoEn]
+          properties:
+            vehiculoId:
+              type: string
+              format: uuid
+            tipoVehiculo:
+              $ref: '#/components/schemas/TipoVehiculo'
+            creadoEn:
+              type: string
+              format: date-time
+
+    DatosConductorArribado:
+      allOf:
+        - $ref: '#/components/schemas/DatosBaseViaje'
+        - type: object
+          required: [arriboEn]
+          properties:
+            arriboEn:
+              type: string
+              format: date-time
+
+    DatosViajeIniciado:
+      allOf:
+        - $ref: '#/components/schemas/DatosBaseViaje'
+        - type: object
+          required: [tipoVehiculo, iniciadoEn]
+          properties:
+            tipoVehiculo:
+              $ref: '#/components/schemas/TipoVehiculo'
+            iniciadoEn:
+              type: string
+              format: date-time
+
+    DatosViajeFinalizado:
+      allOf:
+        - $ref: '#/components/schemas/DatosBaseViaje'
+        - type: object
+          required: [tipoVehiculo, iniciadoEn, finalizadoEn, distanciaRecorridaMetros, duracionSegundos]
+          properties:
+            tipoVehiculo:
+              $ref: '#/components/schemas/TipoVehiculo'
+            iniciadoEn:
+              type: string
+              format: date-time
+            finalizadoEn:
+              type: string
+              format: date-time
+            distanciaRecorridaMetros:
+              type: integer
+              minimum: 0
+            duracionSegundos:
+              type: integer
+              minimum: 0
+
+    DatosViajeCancelado:
+      allOf:
+        - $ref: '#/components/schemas/DatosBaseViaje'
+        - type: object
+          required:
+            - tipoVehiculo
+            - canceladoPor
+            - motivo
+            - estadoAlCancelar
+            - requiereRedespacho
+            - creadoEn
+            - arriboEn
+            - iniciadoEn
+            - canceladoEn
+          properties:
+            tipoVehiculo:
+              $ref: '#/components/schemas/TipoVehiculo'
+            canceladoPor:
+              $ref: '#/components/schemas/Rol'
+            motivo:
+              $ref: '#/components/schemas/MotivoCancelacion'
+            estadoAlCancelar:
+              $ref: '#/components/schemas/EstadoViaje'
+            requiereRedespacho:
+              type: boolean
+              description: Verdadero si M5 debe volver a buscar conductor para la solicitud.
+            creadoEn:
+              type: string
+              format: date-time
+              description: Momento de la asignación. Junto con los demás instantes, le permite a M7 calcular el cargo.
+            arriboEn:
+              $ref: '#/components/schemas/FechaNullable'
+            iniciadoEn:
+              $ref: '#/components/schemas/FechaNullable'
+            canceladoEn:
+              type: string
+              format: date-time

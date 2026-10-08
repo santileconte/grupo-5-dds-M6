@@ -1,0 +1,6 @@
+# Configuración del linter de contratos OpenAPI (Redocly CLI).
+extends:
+  - recommended
+rules:
+  # Los contratos describen servicios que corren localmente en TP1.
+  no-server-example.com: off

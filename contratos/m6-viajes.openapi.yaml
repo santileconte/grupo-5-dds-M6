@@ -1,0 +1,898 @@
+openapi: 3.1.0
+info:
+  title: M6 - Viajes y Ciclo de Vida
+  version: 0.1.0
+  summary: Ciclo de vida del viaje, desde la asignación hasta la finalización o cancelación.
+  description: |
+    API síncrona del módulo M6 (Grupo 5). Cubre RF-6.1 a RF-6.8.
+
+    **Máquina de estados** (ver `docs/m6/maquina-de-estados.md`):
+
+    `ASIGNADO → CONDUCTOR_ARRIBADO → EN_CURSO → FINALIZADO`, y `CANCELADO` desde los estados
+    no terminales según el rol.
+
+    **Convenciones comunes**
+    - Autenticación: `Authorization: Bearer <JWT emitido por M1>`. El token trae el id del usuario
+      y su rol (`CLIENTE`, `CONDUCTOR`, `OPERADOR`, o `SERVICIO` para llamadas entre módulos).
+    - Errores: siempre `application/problem+json` (RFC 9457) con un `codigo` estable.
+    - Concurrencia: cada viaje expone su versión como `ETag`. Las acciones aceptan `If-Match`
+      opcional; si la versión no coincide se responde `412`.
+    - Idempotencia: las acciones aceptan `Idempotency-Key`. Repetir la misma clave devuelve la
+      misma respuesta sin volver a aplicar la acción.
+    - Correlación: `X-Correlation-Id` se propaga en logs y eventos; si no viene, M6 genera uno.
+    - Fechas en ISO 8601 con zona horaria (UTC).
+  contact:
+    name: Grupo 5 - Desarrollo de Software 2026
+  license:
+    name: Uso académico
+    identifier: UNLICENSED
+servers:
+  - url: http://localhost:3000
+    description: Desarrollo local
+tags:
+  - name: Viajes
+    description: Creación y consulta de viajes.
+  - name: Ciclo de vida
+    description: Transiciones de estado del viaje.
+security:
+  - bearerAuth: []
+
+paths:
+  /viajes:
+    post:
+      tags: [Viajes]
+      operationId: crearViaje
+      summary: Crear el viaje de una asignación confirmada
+      description: |
+        La invoca **M5** cuando un conductor quedó asignado a una solicitud (asignación única, RF-5.6).
+        El viaje nace en estado `ASIGNADO` y se publica el evento `ViajeCreado`.
+
+        Es idempotente por `asignacionId`: si ya existe un viaje para esa asignación se devuelve
+        ese viaje con `200`. Si la solicitud ya tiene otro viaje activo se responde `409`.
+
+        **Roles permitidos:** `SERVICIO` (M5).
+      x-roles-permitidos: [SERVICIO]
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearViajeRequest'
+      responses:
+        '201':
+          description: Viaje creado.
+          headers:
+            Location:
+              description: URL del viaje creado.
+              schema:
+                type: string
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Viaje'
+        '200':
+          description: Ya existía un viaje para esa `asignacionId`; se devuelve sin cambios.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Viaje'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+    get:
+      tags: [Viajes]
+      operationId: listarViajes
+      summary: Historial resumido de viajes
+      description: |
+        Lista paginada de viajes, del más reciente al más antiguo. Es la API que usa **M2** para
+        el historial del cliente (RF-2.4), en lugar de acceder a la base de M6.
+
+        **Roles permitidos y filtros efectivos:**
+        - `CLIENTE`: sólo sus viajes (se ignora `clienteId` y se usa el del token).
+        - `CONDUCTOR`: sólo sus viajes (se ignora `conductorId` y se usa el del token).
+        - `OPERADOR`: todos, con los filtros que indique.
+        - `SERVICIO`: debe indicar `clienteId` o `conductorId`.
+      x-roles-permitidos: [CLIENTE, CONDUCTOR, OPERADOR, SERVICIO]
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: clienteId
+          in: query
+          schema:
+            $ref: '#/components/schemas/Id'
+        - name: conductorId
+          in: query
+          schema:
+            $ref: '#/components/schemas/Id'
+        - name: estado
+          in: query
+          description: Filtra por uno o más estados.
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/EstadoViaje'
+        - name: desde
+          in: query
+          description: Viajes creados a partir de esta fecha (inclusive).
+          schema:
+            type: string
+            format: date-time
+        - name: hasta
+          in: query
+          description: Viajes creados antes de esta fecha (exclusive).
+          schema:
+            type: string
+            format: date-time
+        - name: pagina
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: tamanio
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Página de viajes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaViajes'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+
+  /viajes/{viajeId}:
+    parameters:
+      - $ref: '#/components/parameters/ViajeId'
+      - $ref: '#/components/parameters/CorrelationId'
+    get:
+      tags: [Viajes]
+      operationId: obtenerViaje
+      summary: Estado actual y resumen del viaje
+      description: |
+        RF-6.2. **Roles permitidos:** el `CLIENTE` y el `CONDUCTOR` del viaje, `OPERADOR` y `SERVICIO`.
+        A un cliente o conductor ajeno se le responde `404` para no revelar que el viaje existe.
+      x-roles-permitidos: [CLIENTE, CONDUCTOR, OPERADOR, SERVICIO]
+      responses:
+        '200':
+          description: Viaje encontrado.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Viaje'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+
+  /viajes/{viajeId}/historial:
+    parameters:
+      - $ref: '#/components/parameters/ViajeId'
+      - $ref: '#/components/parameters/CorrelationId'
+    get:
+      tags: [Viajes]
+      operationId: obtenerHistorialViaje
+      summary: Historial de transiciones del viaje
+      description: |
+        RF-6.8. Historial **no destructivo**: lista completa de transiciones en orden de `secuencia`.
+        **Roles permitidos:** el `CLIENTE` y el `CONDUCTOR` del viaje, y `OPERADOR`.
+      x-roles-permitidos: [CLIENTE, CONDUCTOR, OPERADOR]
+      responses:
+        '200':
+          description: Historial del viaje.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [viajeId, transiciones]
+                properties:
+                  viajeId:
+                    $ref: '#/components/schemas/Id'
+                  transiciones:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TransicionViaje'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+
+  /viajes/{viajeId}/arribo:
+    parameters:
+      - $ref: '#/components/parameters/ViajeId'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/IdempotencyKey'
+    post:
+      tags: [Ciclo de vida]
+      operationId: registrarArribo
+      summary: El conductor llegó al punto de retiro
+      description: |
+        RF-6.3. `ASIGNADO → CONDUCTOR_ARRIBADO`. Publica `ConductorArribado`.
+        **Roles permitidos:** el `CONDUCTOR` asignado.
+      x-roles-permitidos: [CONDUCTOR]
+      responses:
+        '200':
+          $ref: '#/components/responses/ViajeActualizado'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '412':
+          $ref: '#/components/responses/PrecondicionFallida'
+
+  /viajes/{viajeId}/inicio:
+    parameters:
+      - $ref: '#/components/parameters/ViajeId'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/IdempotencyKey'
+    post:
+      tags: [Ciclo de vida]
+      operationId: iniciarViaje
+      summary: Iniciar el viaje validando el código QR
+      description: |
+        RF-6.4. `CONDUCTOR_ARRIBADO → EN_CURSO`. Publica `ViajeIniciado`.
+
+        El conductor envía el código leído del QR que muestra el cliente. M6 lo valida y lo
+        consume contra M8 (QR temporal de un solo uso, RF-8.3). Si M8 no responde dentro del
+        timeout configurado se devuelve `503` con `Retry-After`; el viaje no cambia de estado.
+
+        **Roles permitidos:** el `CONDUCTOR` asignado.
+      x-roles-permitidos: [CONDUCTOR]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IniciarViajeRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/ViajeActualizado'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '412':
+          $ref: '#/components/responses/PrecondicionFallida'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+        '503':
+          $ref: '#/components/responses/DependenciaNoDisponible'
+
+  /viajes/{viajeId}/finalizacion:
+    parameters:
+      - $ref: '#/components/parameters/ViajeId'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/IdempotencyKey'
+    post:
+      tags: [Ciclo de vida]
+      operationId: finalizarViaje
+      summary: Finalizar el viaje
+      description: |
+        RF-6.5. `EN_CURSO → FINALIZADO`. Publica `ViajeFinalizado`, que dispara el cobro (M7)
+        y el comprobante (M8). La duración la calcula M6 a partir de las fechas de inicio y fin.
+
+        Ante pedidos concurrentes sólo uno finaliza el viaje; el resto recibe `409` (RNF-08).
+
+        **Roles permitidos:** el `CONDUCTOR` asignado.
+      x-roles-permitidos: [CONDUCTOR]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinalizarViajeRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/ViajeActualizado'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '412':
+          $ref: '#/components/responses/PrecondicionFallida'
+
+  /viajes/{viajeId}/cancelacion:
+    parameters:
+      - $ref: '#/components/parameters/ViajeId'
+      - $ref: '#/components/parameters/CorrelationId'
+      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/IdempotencyKey'
+    post:
+      tags: [Ciclo de vida]
+      operationId: cancelarViaje
+      summary: Cancelar el viaje con motivo
+      description: |
+        RF-6.6 y RF-6.7. `→ CANCELADO`. Publica `ViajeCancelado`.
+
+        | Rol | Desde | Motivos |
+        |---|---|---|
+        | `CLIENTE` del viaje | `ASIGNADO`, `CONDUCTOR_ARRIBADO` | `CAMBIO_DE_PLANES`, `DEMORA_EXCESIVA`, `CONDUCTOR_NO_SE_PRESENTO`, `OTRO` |
+        | `CONDUCTOR` asignado | `ASIGNADO`, `CONDUCTOR_ARRIBADO` | `CLIENTE_NO_SE_PRESENTO`, `PROBLEMA_CON_VEHICULO`, `ORIGEN_INACCESIBLE`, `OTRO` |
+        | `OPERADOR` | `ASIGNADO`, `CONDUCTOR_ARRIBADO`, `EN_CURSO` | `INCIDENTE_DE_SEGURIDAD`, `BLOQUEO_ADMINISTRATIVO`, `OTRO` |
+
+        `CLIENTE_NO_SE_PRESENTO` sólo se acepta pasados los minutos de espera configurados desde el arribo.
+
+        Si cancela el conductor antes del inicio (y no por `CLIENTE_NO_SE_PRESENTO`), la respuesta y el
+        evento llevan `requiereRedespacho: true` para que M5 vuelva a buscar conductor.
+        El eventual cargo de cancelación lo calcula M7 a partir del evento.
+      x-roles-permitidos: [CLIENTE, CONDUCTOR, OPERADOR]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelarViajeRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/ViajeActualizado'
+        '400':
+          $ref: '#/components/responses/Validacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/Prohibido'
+        '404':
+          $ref: '#/components/responses/NoEncontrado'
+        '409':
+          $ref: '#/components/responses/Conflicto'
+        '412':
+          $ref: '#/components/responses/PrecondicionFallida'
+        '422':
+          $ref: '#/components/responses/NoProcesable'
+
+  /salud:
+    get:
+      tags: [Viajes]
+      operationId: verificarSalud
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: El servicio está operativo.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [estado]
+                properties:
+                  estado:
+                    type: string
+                    examples: [OK]
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token emitido por M1 (Identidad y Acceso).
+
+  parameters:
+    ViajeId:
+      name: viajeId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Id'
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      description: Identificador para correlacionar logs y eventos entre módulos (RNF-14).
+      schema:
+        type: string
+        maxLength: 100
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: Versión del viaje (`ETag`) sobre la que se quiere actuar. Si no coincide se responde `412`.
+      schema:
+        type: string
+        examples: ['"3"']
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Clave única del pedido. Repetirla devuelve la respuesta original sin aplicar la acción otra vez.
+      schema:
+        type: string
+        format: uuid
+
+  headers:
+    ETag:
+      description: Versión actual del viaje.
+      schema:
+        type: string
+        examples: ['"3"']
+
+  responses:
+    ViajeActualizado:
+      description: Transición aplicada; se devuelve el viaje actualizado.
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Viaje'
+    Validacion:
+      description: 'Datos de entrada inválidos. Código: `VALIDACION`.'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://movilidad.example/errores/validacion
+            title: Datos inválidos
+            status: 400
+            codigo: VALIDACION
+            detail: distanciaRecorridaMetros debe ser un número mayor o igual a 0
+            errores:
+              - campo: distanciaRecorridaMetros
+                mensaje: debe ser mayor o igual a 0
+    NoAutenticado:
+      description: 'Falta el token o es inválido. Código: `NO_AUTENTICADO`.'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    Prohibido:
+      description: 'El rol o el usuario no puede ejecutar la acción. Código: `PROHIBIDO`.'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://movilidad.example/errores/prohibido
+            title: Acción no permitida
+            status: 403
+            codigo: PROHIBIDO
+            detail: 'CONDUCTOR no puede ejecutar FINALIZAR: no es el conductor asignado al viaje'
+    NoEncontrado:
+      description: 'El viaje no existe o no es visible para el usuario. Código: `VIAJE_NO_ENCONTRADO`.'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    Conflicto:
+      description: |
+        Conflicto con el estado actual. Códigos posibles:
+        - `TRANSICION_INVALIDA`: la acción no es válida en el estado actual del viaje.
+        - `CONFLICTO_CONCURRENCIA`: otro pedido modificó el viaje al mismo tiempo.
+        - `VIAJE_ACTIVO_EXISTENTE`: la solicitud ya tiene un viaje activo con otra asignación.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+          example:
+            type: https://movilidad.example/errores/transicion-invalida
+            title: Transición inválida
+            status: 409
+            codigo: TRANSICION_INVALIDA
+            detail: No se puede ejecutar FINALIZAR sobre un viaje en estado FINALIZADO
+            estadoActual: FINALIZADO
+    PrecondicionFallida:
+      description: 'El `If-Match` no coincide con la versión actual. Código: `PRECONDICION_FALLIDA`.'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    NoProcesable:
+      description: |
+        El pedido es válido en forma pero no se puede aplicar. Códigos posibles:
+        - `CODIGO_VERIFICACION_INVALIDO`: el código QR es incorrecto, venció o ya se usó.
+        - `MOTIVO_NO_PERMITIDO`: el motivo no corresponde al rol o todavía no aplica.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+    DependenciaNoDisponible:
+      description: 'Un módulo del que depende la operación no respondió a tiempo. Código: `DEPENDENCIA_NO_DISPONIBLE`.'
+      headers:
+        Retry-After:
+          description: Segundos sugeridos antes de reintentar.
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problema'
+
+  schemas:
+    Id:
+      type: string
+      format: uuid
+
+    EstadoViaje:
+      type: string
+      enum: [ASIGNADO, CONDUCTOR_ARRIBADO, EN_CURSO, FINALIZADO, CANCELADO]
+
+    AccionViaje:
+      type: string
+      enum: [CREAR, REGISTRAR_ARRIBO, INICIAR, FINALIZAR, CANCELAR]
+
+    Rol:
+      type: string
+      enum: [CLIENTE, CONDUCTOR, OPERADOR, SERVICIO]
+
+    TipoVehiculo:
+      type: string
+      enum: [AUTO, MOTO]
+
+    MotivoCancelacion:
+      type: string
+      enum:
+        - CAMBIO_DE_PLANES
+        - DEMORA_EXCESIVA
+        - CONDUCTOR_NO_SE_PRESENTO
+        - CLIENTE_NO_SE_PRESENTO
+        - PROBLEMA_CON_VEHICULO
+        - ORIGEN_INACCESIBLE
+        - INCIDENTE_DE_SEGURIDAD
+        - BLOQUEO_ADMINISTRATIVO
+        - OTRO
+
+    Ubicacion:
+      type: object
+      required: [latitud, longitud]
+      properties:
+        latitud:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitud:
+          type: number
+          minimum: -180
+          maximum: 180
+        direccion:
+          type: string
+          maxLength: 300
+
+    CrearViajeRequest:
+      type: object
+      required: [solicitudId, asignacionId, clienteId, conductorId, vehiculoId, tipoVehiculo, origen, destino]
+      properties:
+        solicitudId:
+          $ref: '#/components/schemas/Id'
+        asignacionId:
+          description: Id de la asignación en M5. Es la clave de idempotencia de la creación.
+          allOf:
+            - $ref: '#/components/schemas/Id'
+        reservaId:
+          description: Presente si la solicitud se originó en una reserva (M9).
+          oneOf:
+            - $ref: '#/components/schemas/Id'
+            - type: 'null'
+        clienteId:
+          $ref: '#/components/schemas/Id'
+        conductorId:
+          $ref: '#/components/schemas/Id'
+        vehiculoId:
+          $ref: '#/components/schemas/Id'
+        tipoVehiculo:
+          $ref: '#/components/schemas/TipoVehiculo'
+        origen:
+          $ref: '#/components/schemas/Ubicacion'
+        destino:
+          $ref: '#/components/schemas/Ubicacion'
+
+    IniciarViajeRequest:
+      type: object
+      required: [codigoVerificacion]
+      properties:
+        codigoVerificacion:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Código leído del QR que muestra el cliente.
+
+    FinalizarViajeRequest:
+      type: object
+      required: [distanciaRecorridaMetros]
+      properties:
+        distanciaRecorridaMetros:
+          type: integer
+          minimum: 0
+        ubicacionFinal:
+          $ref: '#/components/schemas/Ubicacion'
+
+    CancelarViajeRequest:
+      type: object
+      required: [motivo]
+      properties:
+        motivo:
+          $ref: '#/components/schemas/MotivoCancelacion'
+        detalle:
+          type: string
+          maxLength: 500
+
+    Cierre:
+      type: object
+      required: [distanciaRecorridaMetros, duracionSegundos]
+      properties:
+        distanciaRecorridaMetros:
+          type: integer
+          minimum: 0
+        duracionSegundos:
+          type: integer
+          minimum: 0
+        ubicacionFinal:
+          $ref: '#/components/schemas/Ubicacion'
+
+    Cancelacion:
+      type: object
+      required: [canceladoPor, motivo, estadoAlCancelar, requiereRedespacho]
+      properties:
+        canceladoPor:
+          $ref: '#/components/schemas/Rol'
+        motivo:
+          $ref: '#/components/schemas/MotivoCancelacion'
+        detalle:
+          type: string
+        estadoAlCancelar:
+          $ref: '#/components/schemas/EstadoViaje'
+        requiereRedespacho:
+          type: boolean
+          description: Verdadero si la solicitud debe volver a M5 para buscar otro conductor.
+
+    Viaje:
+      type: object
+      required:
+        - id
+        - solicitudId
+        - asignacionId
+        - reservaId
+        - clienteId
+        - conductorId
+        - vehiculoId
+        - tipoVehiculo
+        - origen
+        - destino
+        - estado
+        - version
+        - creadoEn
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        solicitudId:
+          $ref: '#/components/schemas/Id'
+        asignacionId:
+          $ref: '#/components/schemas/Id'
+        reservaId:
+          oneOf:
+            - $ref: '#/components/schemas/Id'
+            - type: 'null'
+        clienteId:
+          $ref: '#/components/schemas/Id'
+        conductorId:
+          $ref: '#/components/schemas/Id'
+        vehiculoId:
+          $ref: '#/components/schemas/Id'
+        tipoVehiculo:
+          $ref: '#/components/schemas/TipoVehiculo'
+        origen:
+          $ref: '#/components/schemas/Ubicacion'
+        destino:
+          $ref: '#/components/schemas/Ubicacion'
+        estado:
+          $ref: '#/components/schemas/EstadoViaje'
+        version:
+          type: integer
+          minimum: 1
+          description: Aumenta en 1 con cada transición. Es el valor del `ETag`.
+        creadoEn:
+          type: string
+          format: date-time
+        arriboEn:
+          type: [string, 'null']
+          format: date-time
+        iniciadoEn:
+          type: [string, 'null']
+          format: date-time
+        finalizadoEn:
+          type: [string, 'null']
+          format: date-time
+        canceladoEn:
+          type: [string, 'null']
+          format: date-time
+        cierre:
+          description: Presente cuando el estado es `FINALIZADO`.
+          oneOf:
+            - $ref: '#/components/schemas/Cierre'
+            - type: 'null'
+        cancelacion:
+          description: Presente cuando el estado es `CANCELADO`.
+          oneOf:
+            - $ref: '#/components/schemas/Cancelacion'
+            - type: 'null'
+      example:
+        id: 7b0e3a8e-4f7c-4d1a-9a52-1f0c2f9d6b11
+        solicitudId: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
+        asignacionId: 5e2d9b7a-1c3f-4a8e-b6d2-9f0e1a2b3c4d
+        reservaId: null
+        clienteId: 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+        conductorId: 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+        vehiculoId: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5e
+        tipoVehiculo: AUTO
+        origen: { latitud: -34.6037, longitud: -58.3816, direccion: Av. Corrientes 1000 }
+        destino: { latitud: -34.5889, longitud: -58.3974, direccion: Av. Santa Fe 3000 }
+        estado: FINALIZADO
+        version: 4
+        creadoEn: '2026-10-08T12:00:00Z'
+        arriboEn: '2026-10-08T12:05:00Z'
+        iniciadoEn: '2026-10-08T12:07:00Z'
+        finalizadoEn: '2026-10-08T12:22:00Z'
+        canceladoEn: null
+        cierre: { distanciaRecorridaMetros: 4200, duracionSegundos: 900 }
+        cancelacion: null
+
+    ViajeResumen:
+      type: object
+      required: [id, estado, tipoVehiculo, clienteId, conductorId, creadoEn]
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        estado:
+          $ref: '#/components/schemas/EstadoViaje'
+        tipoVehiculo:
+          $ref: '#/components/schemas/TipoVehiculo'
+        clienteId:
+          $ref: '#/components/schemas/Id'
+        conductorId:
+          $ref: '#/components/schemas/Id'
+        direccionOrigen:
+          type: string
+        direccionDestino:
+          type: string
+        creadoEn:
+          type: string
+          format: date-time
+        finalizadoEn:
+          type: [string, 'null']
+          format: date-time
+        distanciaRecorridaMetros:
+          type: [integer, 'null']
+          minimum: 0
+
+    PaginaViajes:
+      type: object
+      required: [items, pagina, tamanio, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ViajeResumen'
+        pagina:
+          type: integer
+          minimum: 1
+        tamanio:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+
+    TransicionViaje:
+      type: object
+      required: [secuencia, desde, hacia, accion, actor, ocurridoEn]
+      properties:
+        secuencia:
+          type: integer
+          minimum: 1
+        desde:
+          description: '`null` en la creación del viaje.'
+          oneOf:
+            - $ref: '#/components/schemas/EstadoViaje'
+            - type: 'null'
+        hacia:
+          $ref: '#/components/schemas/EstadoViaje'
+        accion:
+          $ref: '#/components/schemas/AccionViaje'
+        actor:
+          type: object
+          required: [rol, id]
+          properties:
+            rol:
+              $ref: '#/components/schemas/Rol'
+            id:
+              type: string
+        ocurridoEn:
+          type: string
+          format: date-time
+        motivo:
+          $ref: '#/components/schemas/MotivoCancelacion'
+        detalle:
+          type: string
+
+    Problema:
+      type: object
+      description: Error en formato RFC 9457 (problem+json), común a todos los módulos.
+      required: [type, title, status, codigo]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        codigo:
+          type: string
+          description: Código estable para que los clientes decidan sin leer textos.
+          enum:
+            - VALIDACION
+            - NO_AUTENTICADO
+            - PROHIBIDO
+            - VIAJE_NO_ENCONTRADO
+            - TRANSICION_INVALIDA
+            - CONFLICTO_CONCURRENCIA
+            - VIAJE_ACTIVO_EXISTENTE
+            - PRECONDICION_FALLIDA
+            - CODIGO_VERIFICACION_INVALIDO
+            - MOTIVO_NO_PERMITIDO
+            - DEPENDENCIA_NO_DISPONIBLE
+            - ERROR_INTERNO
+        estadoActual:
+          $ref: '#/components/schemas/EstadoViaje'
+        idCorrelacion:
+          type: string
+        errores:
+          type: array
+          description: Detalle por campo cuando `codigo` es `VALIDACION`.
+          items:
+            type: object
+            required: [campo, mensaje]
+            properties:
+              campo:
+                type: string
+              mensaje:
+                type: string
