@@ -28,17 +28,41 @@ export interface RepositorioViajes {
   buscarPorAsignacion(asignacionId: string): Promise<Viaje | null>;
   buscarActivoPorSolicitud(solicitudId: string): Promise<Viaje | null>;
   listar(filtros: FiltrosViajes): Promise<PaginaDeViajes>;
-  /** Guarda un viaje nuevo. Si ya existe uno con la misma asignación devuelve ese, sin guardar. */
-  insertar(viaje: Viaje): Promise<Viaje>;
   /**
-   * Guarda los cambios sólo si la versión guardada sigue siendo `versionLeida` (RNF-08).
-   * Si otro pedido lo modificó antes, lanza ConflictoConcurrenciaError.
+   * Guarda un viaje nuevo junto con sus eventos en la bandeja de salida, todo en una transacción.
+   * Si ya existe uno con la misma asignación devuelve ese, sin guardar nada.
    */
-  actualizar(viaje: Viaje, versionLeida: number): Promise<void>;
+  insertar(viaje: Viaje, eventos: SobreEvento[]): Promise<Viaje>;
+  /**
+   * Guarda los cambios y los eventos, en una transacción, sólo si la versión guardada sigue siendo
+   * `versionLeida` (RNF-08). Si otro pedido lo modificó antes, lanza ConflictoConcurrenciaError
+   * y no guarda nada.
+   */
+  actualizar(viaje: Viaje, versionLeida: number, eventos: SobreEvento[]): Promise<void>;
 }
 
+/**
+ * Bandeja de salida (patrón "transactional outbox"): los eventos se guardan junto con el cambio del
+ * viaje y el RelevadorDeEventos los publica después. Así un evento nunca se pierde aunque el broker
+ * esté caído, y nunca se publica un evento de un cambio que no se guardó.
+ */
+export interface BandejaDeSalida {
+  /**
+   * Toma hasta `limite` eventos pendientes, en el orden en que se generaron, y llama a `publicar`
+   * con cada uno. Los que se publican quedan marcados. Ante el primer fallo se detiene, para no
+   * desordenar los eventos, y registra el error; ese evento se reintenta en la próxima vuelta.
+   */
+  procesarPendientes(limite: number, publicar: (evento: SobreEvento) => Promise<void>): Promise<ResultadoLote>;
+}
+
+export interface ResultadoLote {
+  publicados: number;
+  error?: unknown;
+}
+
+/** Envía un evento al broker. Debe fallar (lanzar) si no puede confirmar el envío. */
 export interface PublicadorEventos {
-  publicar(evento: SobreEvento): Promise<void>;
+  publicar(evento: SobreEvento, routingKey: string): Promise<void>;
 }
 
 export type ResultadoValidacionCodigo = 'VALIDO' | 'INVALIDO';
@@ -55,6 +79,7 @@ export interface Reloj {
 // Tokens de inyección de dependencias de NestJS (las interfaces no existen en tiempo de ejecución).
 export const REPOSITORIO_VIAJES = Symbol('RepositorioViajes');
 export const PUBLICADOR_EVENTOS = Symbol('PublicadorEventos');
+export const BANDEJA_DE_SALIDA = Symbol('BandejaDeSalida');
 export const VALIDADOR_CODIGO = Symbol('ValidadorCodigoVerificacion');
 export const RELOJ = Symbol('Reloj');
 export const CONFIGURACION_VIAJES = Symbol('ConfiguracionViaje');

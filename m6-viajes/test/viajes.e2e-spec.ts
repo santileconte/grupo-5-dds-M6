@@ -3,6 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { DependenciaNoDisponibleError } from '../src/viajes/aplicacion/errores';
 import { ResultadoValidacionCodigo, ValidadorCodigoVerificacion } from '../src/viajes/aplicacion/puertos';
+import { RelevadorDeEventos } from '../src/viajes/aplicacion/relevador-de-eventos';
 import { PublicadorEventosEnLog } from '../src/viajes/infraestructura/publicador-eventos.log';
 import { bearer, crearApp, cuerpoCrearViaje, nuevosIds } from './app-de-prueba';
 
@@ -12,10 +13,11 @@ const OPERADOR = bearer('OPERADOR', randomUUID());
 describe('API de viajes (integración)', () => {
   let app: INestApplication;
   let eventos: PublicadorEventosEnLog;
+  let relevador: RelevadorDeEventos;
   let http: ReturnType<typeof request>;
 
   beforeAll(async () => {
-    ({ app, eventos } = await crearApp());
+    ({ app, eventos, relevador } = await crearApp());
     http = request(app.getHttpServer());
   });
 
@@ -44,7 +46,11 @@ describe('API de viajes (integración)', () => {
     return v;
   }
 
-  const eventosDe = (viajeId: string) => eventos.publicados.filter((e) => e.datos.viajeId === viajeId);
+  /** Hace correr al relevador (en los tests no corre solo) y devuelve lo publicado para ese viaje. */
+  const eventosDe = async (viajeId: string) => {
+    await relevador.procesar();
+    return eventos.publicados.filter((e) => e.datos.viajeId === viajeId);
+  };
 
   describe('infraestructura común', () => {
     it('GET /salud no requiere token', async () => {
@@ -76,7 +82,7 @@ describe('API de viajes (integración)', () => {
         .send(cuerpoCrearViaje())
         .expect(201);
       expect(res.headers['x-correlation-id']).toBe('mi-correlacion-123');
-      expect(eventosDe(res.body.id)[0].idCorrelacion).toBe('mi-correlacion-123');
+      expect((await eventosDe(res.body.id))[0].idCorrelacion).toBe('mi-correlacion-123');
     });
   });
 
@@ -88,7 +94,7 @@ describe('API de viajes (integración)', () => {
       expect(res.body).toMatchObject({ estado: 'ASIGNADO', version: 1, reservaId: null, cierre: null });
       expect(res.headers.location).toBe(`/viajes/${res.body.id}`);
       expect(res.headers.etag).toBe('"1"');
-      expect(eventosDe(res.body.id)).toEqual([
+      expect((await eventosDe(res.body.id))).toEqual([
         expect.objectContaining({
           tipo: 'ViajeCreado',
           productor: 'm6-viajes',
@@ -102,7 +108,7 @@ describe('API de viajes (integración)', () => {
       const primero = await http.post('/viajes').set('Authorization', M5).send(cuerpo).expect(201);
       const segundo = await http.post('/viajes').set('Authorization', M5).send(cuerpo).expect(200);
       expect(segundo.body.id).toBe(primero.body.id);
-      expect(eventosDe(primero.body.id)).toHaveLength(1);
+      expect((await eventosDe(primero.body.id))).toHaveLength(1);
     });
 
     it('rechaza otra asignación para una solicitud con viaje activo', async () => {
@@ -177,13 +183,13 @@ describe('API de viajes (integración)', () => {
       ]);
       expect(historial.body.transiciones[0]).toMatchObject({ secuencia: 1, desde: null, accion: 'CREAR' });
 
-      expect(eventosDe(v.id).map((e) => e.tipo)).toEqual([
+      expect((await eventosDe(v.id)).map((e) => e.tipo)).toEqual([
         'ViajeCreado',
         'ConductorArribado',
         'ViajeIniciado',
         'ViajeFinalizado',
       ]);
-      expect(eventosDe(v.id)[3].datos).toMatchObject({ distanciaRecorridaMetros: 4200, versionViaje: 4 });
+      expect((await eventosDe(v.id))[3].datos).toMatchObject({ distanciaRecorridaMetros: 4200, versionViaje: 4 });
     });
 
     it('una transición inválida responde 409 con el estado actual', async () => {
@@ -266,7 +272,7 @@ describe('API de viajes (integración)', () => {
         estado: 'CANCELADO',
         cancelacion: { canceladoPor: 'CONDUCTOR', estadoAlCancelar: 'ASIGNADO', requiereRedespacho: true },
       });
-      const evento = eventosDe(v.id).at(-1);
+      const evento = (await eventosDe(v.id)).at(-1);
       expect(evento).toMatchObject({
         tipo: 'ViajeCancelado',
         datos: expect.objectContaining({ requiereRedespacho: true, motivo: 'PROBLEMA_CON_VEHICULO' }),
@@ -374,7 +380,7 @@ describe('API de viajes (integración)', () => {
       const repetido = await enviar().expect(200);
       expect(repetido.body).toEqual(primero.body);
       expect(repetido.headers['idempotent-replayed']).toBe('true');
-      expect(eventosDe(v.id).filter((e) => e.tipo === 'ViajeCancelado')).toHaveLength(1);
+      expect((await eventosDe(v.id)).filter((e) => e.tipo === 'ViajeCancelado')).toHaveLength(1);
     });
 
     it('dos finalizaciones simultáneas: sólo una gana', async () => {
@@ -387,7 +393,7 @@ describe('API de viajes (integración)', () => {
 
       const respuestas = await Promise.all([finalizar(), finalizar(), finalizar()]);
       expect(respuestas.map((r) => r.status).sort()).toEqual([200, 409, 409]);
-      expect(eventosDe(v.id).filter((e) => e.tipo === 'ViajeFinalizado')).toHaveLength(1);
+      expect((await eventosDe(v.id)).filter((e) => e.tipo === 'ViajeFinalizado')).toHaveLength(1);
     });
   });
 });

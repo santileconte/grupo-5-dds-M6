@@ -12,6 +12,8 @@ info:
       Cada consumidor crea su propia cola y la enlaza con las routing keys que le interesan
       (por ejemplo `viajes.#`).
     - Todos los mensajes usan el mismo sobre (`SobreEvento`). Los datos propios del evento van en `datos`.
+    - Propiedades AMQP de cada mensaje: `message_id` = `idEvento`, `correlation_id` = `idCorrelacion`,
+      `type` = `tipo`, `content_type` = `application/json`, `delivery_mode` = 2 (persistente).
     - Entrega **al menos una vez**: un evento puede llegar repetido. Los consumidores deben
       descartar duplicados por `idEvento` (RNF-09).
     - Orden: sólo se garantiza por viaje. Si llega un evento de un viaje con `versionViaje`

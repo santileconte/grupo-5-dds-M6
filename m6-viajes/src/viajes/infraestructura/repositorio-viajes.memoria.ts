@@ -2,18 +2,20 @@ import { Injectable } from '@nestjs/common';
 import { ESTADOS_TERMINALES } from '../dominio/tipos';
 import { Viaje, ViajeProps } from '../dominio/viaje';
 import { ConflictoConcurrenciaError, ViajeNoEncontradoError } from '../aplicacion/errores';
-import { FiltrosViajes, PaginaDeViajes, RepositorioViajes } from '../aplicacion/puertos';
+import { SobreEvento } from '../aplicacion/eventos';
+import { BandejaDeSalida, FiltrosViajes, PaginaDeViajes, RepositorioViajes, ResultadoLote } from '../aplicacion/puertos';
 
 /**
- * Repositorio en memoria. Sirve para desarrollar y probar sin base de datos; los datos se
- * pierden al reiniciar. Se reemplazará por PostgreSQL implementando la misma interfaz.
+ * Repositorio en memoria (PERSISTENCIA=memoria). Sirve para desarrollar y probar sin base de datos;
+ * los datos se pierden al reiniciar. También hace de bandeja de salida de eventos.
  *
  * Guarda copias (no los objetos vivos) para comportarse como una base de datos real:
  * los cambios sólo existen después de `actualizar`.
  */
 @Injectable()
-export class RepositorioViajesEnMemoria implements RepositorioViajes {
+export class RepositorioViajesEnMemoria implements RepositorioViajes, BandejaDeSalida {
   private readonly viajes = new Map<string, ViajeProps>();
+  private readonly pendientes: SobreEvento[] = [];
 
   async buscarPorId(id: string): Promise<Viaje | null> {
     const props = this.viajes.get(id);
@@ -48,7 +50,7 @@ export class RepositorioViajesEnMemoria implements RepositorioViajes {
     };
   }
 
-  async insertar(viaje: Viaje): Promise<Viaje> {
+  async insertar(viaje: Viaje, eventos: SobreEvento[]): Promise<Viaje> {
     const props = viaje.toProps();
     // En PostgreSQL esto lo garantiza un índice único sobre asignacion_id.
     const existente = await this.buscarPorAsignacion(props.asignacionId);
@@ -56,10 +58,11 @@ export class RepositorioViajesEnMemoria implements RepositorioViajes {
       return existente;
     }
     this.viajes.set(props.id, props);
+    this.pendientes.push(...eventos);
     return viaje;
   }
 
-  async actualizar(viaje: Viaje, versionLeida: number): Promise<void> {
+  async actualizar(viaje: Viaje, versionLeida: number, eventos: SobreEvento[]): Promise<void> {
     const guardado = this.viajes.get(viaje.id);
     if (!guardado) {
       throw new ViajeNoEncontradoError(viaje.id);
@@ -69,5 +72,21 @@ export class RepositorioViajesEnMemoria implements RepositorioViajes {
       throw new ConflictoConcurrenciaError(viaje.id);
     }
     this.viajes.set(viaje.id, viaje.toProps());
+    this.pendientes.push(...eventos);
+  }
+
+  async procesarPendientes(limite: number, publicar: (evento: SobreEvento) => Promise<void>): Promise<ResultadoLote> {
+    const resultado: ResultadoLote = { publicados: 0 };
+    while (resultado.publicados < limite && this.pendientes.length > 0) {
+      try {
+        await publicar(this.pendientes[0]);
+      } catch (error) {
+        resultado.error = error;
+        break;
+      }
+      this.pendientes.shift();
+      resultado.publicados += 1;
+    }
+    return resultado;
   }
 }

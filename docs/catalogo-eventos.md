@@ -64,9 +64,27 @@ Ninguno por ahora: el viaje se crea por API (`POST /viajes`, invocado por M5). S
 decide que la asignación se comunique por evento (por ejemplo `despacho.asignacion.confirmada`),
 M6 lo consumiría con la misma lógica idempotente por `asignacionId`.
 
-## Garantía de publicación (TP2)
+## Garantía de publicación: bandeja de salida (outbox)
 
-Para que un cambio de estado y su evento no queden desalineados, se usará el patrón
-**transactional outbox**: la transición y el evento se guardan en la misma transacción de base de
-datos, y un proceso aparte publica los eventos pendientes en RabbitMQ. Si el broker no está
-disponible, el viaje igual avanza y el evento se publica cuando el broker vuelve (RNF-13).
+**Ya implementado.** Cada evento se guarda en la tabla `eventos_salientes` **en la misma
+transacción** que el cambio del viaje que lo origina. Un proceso aparte, el `RelevadorDeEventos`,
+revisa esa tabla cada segundo, publica los pendientes en RabbitMQ, en orden, y los marca como
+publicados.
+
+- Si RabbitMQ está caído, el viaje sigue funcionando y los eventos quedan pendientes hasta que el
+  broker vuelve (RNF-13).
+- Nunca se publica un evento de un cambio que no se guardó.
+- Un evento puede llegar **más de una vez**, por ejemplo si el servicio se cae justo después de
+  publicar. Por eso los consumidores tienen que descartar duplicados por `idEvento` (RNF-09).
+
+## Cómo consumir los eventos de M6 (para otros grupos)
+
+1. Conectarse al RabbitMQ del entorno y declarar el exchange `movilidad.eventos`, de tipo
+   `topic` y durable. Declararlo es idempotente: si ya existe, no pasa nada.
+2. Crear una cola **durable propia**, por ejemplo `m7-pagos.viajes`, y enlazarla con las routing
+   keys que interesen: `viajes.viaje.finalizado`, o `viajes.#` para todas.
+3. Procesar cada mensaje y hacer `ack` recién cuando se guardó el resultado. Descartar los
+   `idEvento` ya procesados.
+
+Si la cola no existe en el momento en que M6 publica, RabbitMQ descarta el mensaje. Por eso cada
+consumidor tiene que crear su cola antes de empezar a recibir.

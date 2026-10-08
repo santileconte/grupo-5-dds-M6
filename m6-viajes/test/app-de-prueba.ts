@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../src/app.module';
 import { PUBLICADOR_EVENTOS, VALIDADOR_CODIGO, ValidadorCodigoVerificacion } from '../src/viajes/aplicacion/puertos';
+import { RelevadorDeEventos } from '../src/viajes/aplicacion/relevador-de-eventos';
 import { PublicadorEventosEnLog } from '../src/viajes/infraestructura/publicador-eventos.log';
 import { Pool } from 'pg';
 import { POOL_POSTGRES } from '../src/viajes/infraestructura/postgres/conexion';
@@ -13,6 +14,7 @@ import { SECRETO_TESTS } from './entorno';
 export interface AppDePrueba {
   app: INestApplication;
   eventos: PublicadorEventosEnLog;
+  relevador: RelevadorDeEventos;
 }
 
 /** Levanta la aplicación completa, opcionalmente con otro validador de QR. */
@@ -27,9 +29,9 @@ export async function crearApp(validador?: ValidadorCodigoVerificacion): Promise
   const pool = app.get<Pool | null>(POOL_POSTGRES);
   if (pool) {
     // Cada archivo de tests arranca con la base vacía (TRUNCATE no dispara el trigger del historial).
-    await pool.query('TRUNCATE transiciones_viaje, viajes');
+    await pool.query('TRUNCATE transiciones_viaje, viajes, eventos_salientes');
   }
-  return { app, eventos: app.get(PUBLICADOR_EVENTOS) };
+  return { app, eventos: app.get(PUBLICADOR_EVENTOS), relevador: app.get(RelevadorDeEventos) };
 }
 
 const jwt = new JwtService({ secret: SECRETO_TESTS });

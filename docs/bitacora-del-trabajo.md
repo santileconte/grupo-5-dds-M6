@@ -388,6 +388,72 @@ Los comandos están en la sección "Cómo traer los cambios y commitear" más ab
 
 ---
 
+## Paso 11 – Eventos en RabbitMQ con bandeja de salida (outbox)
+
+**Qué es:** hasta acá los eventos sólo se mostraban en la terminal. Ahora se publican de verdad en
+**RabbitMQ** (RNF-10), que es el "cartero" por el que los otros módulos reciben los avisos de M6.
+
+**El problema que resuelve el outbox:** guardar el viaje en la base y publicar el evento en
+RabbitMQ son dos cosas separadas. Si una sale bien y la otra mal:
+- se finaliza un viaje y el evento se pierde, entonces M7 nunca cobra; o
+- se publica un evento de un cambio que no se guardó.
+
+**La solución (patrón *transactional outbox*):**
+1. El evento se guarda en la tabla `eventos_salientes` (la "bandeja de salida") **en la misma
+   transacción** que el cambio del viaje. O se guardan los dos, o ninguno.
+2. Un proceso aparte, el **`RelevadorDeEventos`**, revisa la bandeja cada segundo, publica los
+   pendientes en RabbitMQ en orden y los marca como publicados.
+3. Si RabbitMQ está caído, el viaje **sigue funcionando**. Los eventos quedan pendientes y se
+   publican solos cuando el broker vuelve (RNF-13).
+
+**Qué se agregó:**
+
+| Archivo | Para qué |
+|---|---|
+| `migraciones/002_bandeja_de_salida.sql` | Tabla `eventos_salientes` |
+| `aplicacion/relevador-de-eventos.ts` | Vacía la bandeja hacia el broker cada `OUTBOX_INTERVALO_MS` |
+| `infraestructura/postgres/bandeja-de-salida.postgres.ts` | Toma pendientes con `FOR UPDATE SKIP LOCKED`, que es seguro con varias instancias |
+| `infraestructura/publicador-eventos.rabbitmq.ts` | Publica con confirmación de RabbitMQ, mensajes persistentes, reconexión y timeout |
+| `docker-compose.yml` | Servicio `rabbitmq`, con consola web en el puerto 15672 |
+| `docs/decisiones/ADR-003-eventos-rabbitmq-outbox.md` | La decisión y sus consecuencias |
+
+**Cambios en el código existente:**
+- `ViajesService` ya no publica: le pasa el evento al repositorio para que lo guarde junto con el
+  viaje.
+- El pool de PostgreSQL se cierra en la última etapa del apagado, así el relevador termina su vuelta
+  antes de que se cierren las conexiones.
+
+**Cambios en la forma de trabajar:**
+- `npm run db:levantar` pasó a ser **`npm run infra:levantar`**, que levanta PostgreSQL **y**
+  RabbitMQ.
+- `npm run test:postgres` pasó a ser **`npm run test:infra`**, que prueba contra los dos.
+- `.env.example` tiene `PUBLICADOR_EVENTOS=rabbitmq` y `RABBITMQ_URL`. **Hay que volver a copiarlo:**
+  `cp .env.example .env`.
+- Sin Docker: `PUBLICADOR_EVENTOS=log` y `PERSISTENCIA=memoria`.
+
+**Algo importante para los otros grupos:** un evento puede llegar **dos veces**, por ejemplo si el
+servicio se cae justo después de publicarlo. Cada consumidor debe ignorar los `idEvento` que ya
+procesó (RNF-09). Está explicado en `docs/catalogo-eventos.md`, sección "Cómo consumir los eventos
+de M6".
+
+✅ **Pruebas:**
+- **Tests nuevos:**
+  - el relevador publica en orden y no duplica;
+  - si el broker está caído no pierde nada;
+  - un cambio que no se guarda no deja evento;
+  - dos relevadores a la vez no toman el mismo evento;
+  - el mensaje llega a RabbitMQ con la routing key y las propiedades correctas;
+  - si RabbitMQ no existe, falla rápido.
+- **Totales:** 42 unitarios y 47 de integración contra PostgreSQL y RabbitMQ reales.
+- **Prueba manual con todo en contenedores:**
+  1. se creó un viaje y se registró el arribo; los dos eventos llegaron a una cola;
+  2. se **apagó RabbitMQ** y se canceló el viaje: la API respondió 200 y el evento quedó
+     pendiente, con 3 reintentos;
+  3. se **prendió RabbitMQ**: el evento `ViajeCancelado` llegó solo a la cola y la bandeja quedó
+     vacía. En el log apareció "Publicación de eventos restablecida".
+
+---
+
 ## Problemas que aparecieron al probar y cómo se resolvieron
 
 | Síntoma | Causa | Solución |
@@ -399,6 +465,7 @@ Los comandos están en la sección "Cómo traer los cambios y commitear" más ab
 | **403** `PROHIBIDO` al crear el viaje | Se usó el token de CLIENTE y después el de CONDUCTOR; crear viajes sólo lo puede hacer SERVICIO | Logout y Authorize con el token de **SERVICIO**. |
 | **200** en lugar de 201 al crear | El viaje ya se había creado en un Execute anterior con el mismo `asignacionId` | Es el comportamiento esperado (idempotencia). Para otro viaje, cambiar `solicitudId` y `asignacionId`. |
 | Las consultas SQL "no hacían nada" | Se escribieron en la terminal donde corría el servidor | Abrir otra terminal con **+** y correr `npm run db:consola` ahí. |
+| RabbitMQ rechazaba al usuario `guest` desde el contenedor del servicio | `guest` sólo puede conectarse desde la misma máquina | En docker compose se crea el usuario `m6` / `m6` |
 | `docker stop` tardaba 10 s y mataba el proceso | Node no cerraba la app al recibir SIGTERM | `app.enableShutdownHooks()` en `main.ts` |
 | GitHub rechazó un push ("Push cannot contain secrets") | Falso positivo: tomó un UUID de ejemplo escrito después de la palabra "token" como si fuera un token de npm | Se reemplazó el ejemplo por `<conductorId>`. |
 
@@ -417,13 +484,13 @@ grupo-5-dds/
 │   ├── acuerdos-con-otros-grupos.md  # propuestas y mensajes para cada grupo
 │   ├── catalogo-eventos.md
 │   ├── m6/maquina-de-estados.md
-│   └── decisiones/                   # ADR-001 (stack) y ADR-002 (persistencia)
+│   └── decisiones/                   # ADR-001 (stack), ADR-002 (persistencia), ADR-003 (eventos)
 └── m6-viajes/                        # servicio NestJS
     ├── src/                          # código (dominio, aplicación, infraestructura, http, común)
     ├── test/                         # tests de integración
     ├── migraciones/                  # esquema de la base
     ├── Dockerfile                    # imagen del servicio
-    ├── docker-compose.yml            # PostgreSQL + servicio
+    ├── docker-compose.yml            # PostgreSQL + RabbitMQ + servicio
     └── .env.example                  # plantilla de configuración
 ```
 
@@ -437,8 +504,11 @@ grupo-5-dds/
 | RNF-04 Imagen de contenedor del servicio | ✅ | `m6-viajes/Dockerfile`, imagen `grupo5/m6-viajes:0.1.0` |
 | RNF-05 Persistencia propia | ✅ | PostgreSQL, ADR-002 |
 | RNF-06 Configuración externa | ✅ | `.env` / `.env.example` |
-| RNF-07 Tests unitarios y de integración | ✅ | `npm test`, `npm run test:postgres` |
+| RNF-07 Tests unitarios y de integración | ✅ | `npm test`, `npm run test:infra` |
 | RNF-08 Concurrencia | ✅ | Versión + `UPDATE` condicional |
+| RNF-09 Idempotencia (TP2) | ✅ en M6 | `Idempotency-Key`, creación por `asignacionId`, eventos con `idEvento` |
+| RNF-10 Mensajería (TP2) | ✅ | RabbitMQ + outbox, ADR-003 |
+| RNF-13 Resiliencia (TP2) | 🟡 Parcial | Timeouts con M8 y RabbitMQ; eventos que esperan si el broker se cae |
 | RNF-20 Documentación | ✅ | README, docs/, ADRs |
 | RF-6.1 a RF-6.8 | ✅ | Dominio + API |
 
@@ -447,7 +517,6 @@ grupo-5-dds/
 1. **Mandar los mensajes** de `docs/acuerdos-con-otros-grupos.md`, empezando por M5, M8, M1 y el
    Grupo 12, y ajustar contratos y código según lo que se acuerde.
 2. **TP2:**
-   - publicar los eventos en RabbitMQ con el patrón *outbox*;
    - pasar la idempotencia a Redis;
    - agregar health checks y logs estructurados;
    - automatizar el build y los tests en CI.
@@ -462,6 +531,8 @@ Codespace, desde la raíz del repo:
 ```bash
 git pull
 ```
+
+Si cambió `.env.example` (lo dice la bitácora), volver a copiarlo: `cp m6-viajes/.env.example m6-viajes/.env`.
 
 Para guardar y subir **cambios propios** (por ejemplo, después de completar un acuerdo):
 

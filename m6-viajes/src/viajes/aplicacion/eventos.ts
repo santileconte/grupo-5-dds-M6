@@ -15,6 +15,21 @@ export interface SobreEvento {
 
 const PRODUCTOR = 'm6-viajes';
 
+/** Routing key de cada evento en el exchange `movilidad.eventos` (ver contrato AsyncAPI). */
+export const ROUTING_KEYS: Readonly<Record<string, string>> = {
+  ViajeCreado: 'viajes.viaje.creado',
+  ConductorArribado: 'viajes.conductor.arribado',
+  ViajeIniciado: 'viajes.viaje.iniciado',
+  ViajeFinalizado: 'viajes.viaje.finalizado',
+  ViajeCancelado: 'viajes.viaje.cancelado',
+};
+
+export function routingKeyDe(evento: SobreEvento): string {
+  const routingKey = ROUTING_KEYS[evento.tipo];
+  if (!routingKey) throw new Error(`No hay routing key para el evento ${evento.tipo}`);
+  return routingKey;
+}
+
 const iso = (fecha: Date | null) => (fecha ? fecha.toISOString() : null);
 
 /** Arma el evento correspondiente a la última transición del viaje. */

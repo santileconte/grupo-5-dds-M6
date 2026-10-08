@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { Pool } from 'pg';
 import { migrar } from './migraciones';
 
@@ -17,21 +17,24 @@ export async function crearPoolPostgres(url: string): Promise<Pool> {
     const destino = url.replace(/\/\/[^@]*@/, '//***@'); // no mostrar la contraseña en el log
     throw new Error(
       `No se pudo conectar a PostgreSQL en ${destino}: ${String(error)}\n` +
-        '¿Levantaste la base con "npm run db:levantar"? Para trabajar sin base, usá PERSISTENCIA=memoria en .env.',
+        '¿Levantaste la base con "npm run infra:levantar"? Para trabajar sin base, usá PERSISTENCIA=memoria en .env.',
     );
   }
   await migrar(pool);
   return pool;
 }
 
-/** Cierra el pool cuando la aplicación se detiene (por ejemplo, con Ctrl + C o al terminar los tests). */
+/**
+ * Cierra el pool cuando la aplicación se detiene (por ejemplo, con Ctrl + C o al terminar los tests).
+ * Usa la última etapa del apagado, para que antes termine el RelevadorDeEventos, que usa la base.
+ */
 @Injectable()
-export class CierrePoolPostgres implements OnModuleDestroy {
+export class CierrePoolPostgres implements OnApplicationShutdown {
   private readonly logger = new Logger('PostgreSQL');
 
   constructor(@Inject(POOL_POSTGRES) private readonly pool: Pool | null) {}
 
-  async onModuleDestroy(): Promise<void> {
+  async onApplicationShutdown(): Promise<void> {
     if (this.pool) {
       await this.pool.end();
       this.logger.log('Conexiones cerradas');

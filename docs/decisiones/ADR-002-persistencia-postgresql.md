@@ -41,5 +41,5 @@ no destructivo (RF-6.8).
 - Agregar un campo implica escribir una migración nueva y actualizar el mapeo del repositorio.
 - Las ubicaciones, el cierre y la cancelación se guardan como `JSONB`, porque siempre se leen
   junto con el viaje y nunca se filtra por ellos.
-- `npm test` usa el repositorio en memoria; `npm run test:postgres` corre los mismos tests de
+- `npm test` usa el repositorio en memoria; `npm run test:infra` corre los mismos tests de
   integración y los del repositorio contra una base real.

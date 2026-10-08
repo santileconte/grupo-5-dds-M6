@@ -12,6 +12,7 @@ import {
 } from '../../dominio/tipos';
 import { Viaje, ViajeProps } from '../../dominio/viaje';
 import { ConflictoConcurrenciaError, ViajeActivoExistenteError, ViajeNoEncontradoError } from '../../aplicacion/errores';
+import { routingKeyDe, SobreEvento } from '../../aplicacion/eventos';
 import { FiltrosViajes, PaginaDeViajes, RepositorioViajes } from '../../aplicacion/puertos';
 
 /** Fila de la tabla `viajes` tal como la devuelve `pg`. */
@@ -107,7 +108,7 @@ export class RepositorioViajesPostgres implements RepositorioViajes {
     return { items: await this.conHistorial(filas.rows), total: Number(total.rows[0].total) };
   }
 
-  async insertar(viaje: Viaje): Promise<Viaje> {
+  async insertar(viaje: Viaje, eventos: SobreEvento[]): Promise<Viaje> {
     const v = viaje.toProps();
     try {
       const guardado = await this.enTransaccion(async (cliente) => {
@@ -143,6 +144,7 @@ export class RepositorioViajesPostgres implements RepositorioViajes {
           return false; // Otro pedido ya creó el viaje de esta asignación.
         }
         await this.insertarTransiciones(cliente, v.id, v.historial);
+        await insertarEventos(cliente, eventos);
         return true;
       });
       if (guardado) {
@@ -159,7 +161,7 @@ export class RepositorioViajesPostgres implements RepositorioViajes {
     }
   }
 
-  async actualizar(viaje: Viaje, versionLeida: number): Promise<void> {
+  async actualizar(viaje: Viaje, versionLeida: number, eventos: SobreEvento[]): Promise<void> {
     const v = viaje.toProps();
     await this.enTransaccion(async (cliente) => {
       // Sólo se actualiza si nadie lo modificó desde que lo leímos (RNF-08).
@@ -191,6 +193,7 @@ export class RepositorioViajesPostgres implements RepositorioViajes {
         v.id,
         v.historial.filter((t) => t.secuencia > versionLeida),
       );
+      await insertarEventos(cliente, eventos);
     });
   }
 
@@ -240,6 +243,16 @@ export class RepositorioViajesPostgres implements RepositorioViajes {
     } finally {
       cliente.release();
     }
+  }
+}
+
+/** Guarda los eventos en la bandeja de salida, dentro de la transacción del cambio que los origina. */
+async function insertarEventos(cliente: PoolClient, eventos: SobreEvento[]): Promise<void> {
+  for (const evento of eventos) {
+    await cliente.query(
+      `INSERT INTO eventos_salientes (id_evento, tipo, routing_key, cuerpo) VALUES ($1, $2, $3, $4)`,
+      [evento.idEvento, evento.tipo, routingKeyDe(evento), JSON.stringify(evento)],
+    );
   }
 }
 

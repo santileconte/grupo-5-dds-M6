@@ -26,7 +26,15 @@ export function validarConfiguracion(env: Record<string, unknown>): Record<strin
     errores.push('BASE_DATOS_URL es obligatoria cuando PERSISTENCIA=postgres');
   }
 
-  for (const nombre of ['PUERTO', 'ESPERA_MINIMA_ARRIBO_MINUTOS', 'M8_TIMEOUT_MS']) {
+  const publicador = env.PUBLICADOR_EVENTOS ?? 'log';
+  if (publicador !== 'log' && publicador !== 'rabbitmq') {
+    errores.push('PUBLICADOR_EVENTOS debe ser "log" o "rabbitmq"');
+  }
+  if (publicador === 'rabbitmq' && !env.RABBITMQ_URL) {
+    errores.push('RABBITMQ_URL es obligatoria cuando PUBLICADOR_EVENTOS=rabbitmq');
+  }
+
+  for (const nombre of ['OUTBOX_INTERVALO_MS', 'OUTBOX_TAMANIO_LOTE', 'RABBITMQ_TIMEOUT_MS', 'PUERTO', 'ESPERA_MINIMA_ARRIBO_MINUTOS', 'M8_TIMEOUT_MS']) {
     if (env[nombre] !== undefined && !(Number(env[nombre]) >= 0)) {
       errores.push(`${nombre} debe ser un número`);
     }

@@ -7,7 +7,7 @@ import { crearPoolPostgres } from '../src/viajes/infraestructura/postgres/conexi
 import { RepositorioViajesPostgres } from '../src/viajes/infraestructura/postgres/repositorio-viajes.postgres';
 import { CON_POSTGRES } from './entorno';
 
-// Tests del repositorio contra una base real. Se saltean si no se corre con `npm run test:postgres`.
+// Tests del repositorio contra una base real. Se saltean si no se corre con `npm run test:infra`.
 const describeConPostgres = CON_POSTGRES ? describe : describe.skip;
 
 describeConPostgres('RepositorioViajesPostgres', () => {
@@ -20,7 +20,7 @@ describeConPostgres('RepositorioViajesPostgres', () => {
   beforeAll(async () => {
     pool = await crearPoolPostgres(process.env.BASE_DATOS_URL as string);
     repo = new RepositorioViajesPostgres(pool);
-    await pool.query('TRUNCATE transiciones_viaje, viajes');
+    await pool.query('TRUNCATE transiciones_viaje, viajes, eventos_salientes');
   });
 
   afterAll(() => pool.end());
@@ -48,11 +48,11 @@ describeConPostgres('RepositorioViajesPostgres', () => {
 
   it('guarda y recupera el viaje completo, con su historial', async () => {
     const viaje = nuevoViaje();
-    await repo.insertar(viaje);
+    await repo.insertar(viaje, []);
     viaje.registrarArribo(conductorDe(viaje), minutos(5));
-    await repo.actualizar(viaje, 1);
+    await repo.actualizar(viaje, 1, []);
     viaje.cancelar(conductorDe(viaje), { motivo: MotivoCancelacion.PROBLEMA_CON_VEHICULO, detalle: 'Goma' }, minutos(6));
-    await repo.actualizar(viaje, 2);
+    await repo.actualizar(viaje, 2, []);
 
     const leido = await repo.buscarPorId(viaje.id);
     expect(leido?.toProps()).toEqual(viaje.toProps());
@@ -66,39 +66,39 @@ describeConPostgres('RepositorioViajesPostgres', () => {
   it('insertar es idempotente por asignación', async () => {
     const asignacionId = randomUUID();
     const primero = nuevoViaje({ asignacionId });
-    await repo.insertar(primero);
-    const repetido = await repo.insertar(nuevoViaje({ asignacionId }));
+    await repo.insertar(primero, []);
+    const repetido = await repo.insertar(nuevoViaje({ asignacionId }), []);
     expect(repetido.id).toBe(primero.id);
   });
 
   it('no permite dos viajes activos para la misma solicitud, pero sí uno nuevo tras cancelar', async () => {
     const solicitudId = randomUUID();
     const primero = nuevoViaje({ solicitudId });
-    await repo.insertar(primero);
-    await expect(repo.insertar(nuevoViaje({ solicitudId }))).rejects.toBeInstanceOf(ViajeActivoExistenteError);
+    await repo.insertar(primero, []);
+    await expect(repo.insertar(nuevoViaje({ solicitudId }), [])).rejects.toBeInstanceOf(ViajeActivoExistenteError);
 
     primero.cancelar(conductorDe(primero), { motivo: MotivoCancelacion.ORIGEN_INACCESIBLE }, minutos(1));
-    await repo.actualizar(primero, 1);
-    await expect(repo.insertar(nuevoViaje({ solicitudId }))).resolves.toBeDefined();
+    await repo.actualizar(primero, 1, []);
+    await expect(repo.insertar(nuevoViaje({ solicitudId }), [])).resolves.toBeDefined();
   });
 
   it('rechaza guardar sobre una versión vieja (concurrencia optimista)', async () => {
     const original = nuevoViaje();
-    await repo.insertar(original);
+    await repo.insertar(original, []);
     const a = (await repo.buscarPorId(original.id)) as Viaje;
     const b = (await repo.buscarPorId(original.id)) as Viaje;
 
     a.registrarArribo(conductorDe(a), minutos(1));
-    await repo.actualizar(a, 1);
+    await repo.actualizar(a, 1, []);
 
     b.cancelar({ rol: Rol.OPERADOR, id: 'op' }, { motivo: MotivoCancelacion.OTRO }, minutos(1));
-    await expect(repo.actualizar(b, 1)).rejects.toBeInstanceOf(ConflictoConcurrenciaError);
+    await expect(repo.actualizar(b, 1, [])).rejects.toBeInstanceOf(ConflictoConcurrenciaError);
     expect((await repo.buscarPorId(original.id))?.estado).toBe(EstadoViaje.CONDUCTOR_ARRIBADO);
   });
 
   it('la base impide modificar o borrar el historial (RF-6.8)', async () => {
     const viaje = nuevoViaje();
-    await repo.insertar(viaje);
+    await repo.insertar(viaje, []);
     await expect(
       pool.query(`UPDATE transiciones_viaje SET hacia = 'CANCELADO' WHERE viaje_id = $1`, [viaje.id]),
     ).rejects.toThrow(/no se puede modificar/);
@@ -109,7 +109,7 @@ describeConPostgres('RepositorioViajesPostgres', () => {
 
   it('lista con filtros y paginación', async () => {
     const viaje = nuevoViaje();
-    await repo.insertar(viaje);
+    await repo.insertar(viaje, []);
     const { clienteId } = viaje.toProps();
 
     const propios = await repo.listar({ clienteId, pagina: 1, tamanio: 10 });

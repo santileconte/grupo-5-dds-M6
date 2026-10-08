@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { DatosInvalidosError } from '../dominio/errores';
 import { Actor, Rol, TransicionViaje } from '../dominio/tipos';
 import {
@@ -21,8 +21,6 @@ import {
   CONFIGURACION_VIAJES,
   FiltrosViajes,
   PaginaDeViajes,
-  PUBLICADOR_EVENTOS,
-  PublicadorEventos,
   RELOJ,
   Reloj,
   REPOSITORIO_VIAJES,
@@ -41,16 +39,14 @@ export interface Contexto {
 type VersionEsperada = number | undefined;
 
 /**
- * Casos de uso de M6. Coordina el dominio (Viaje) con los puertos: repositorio,
- * validador del QR y publicador de eventos. No sabe nada de HTTP.
+ * Casos de uso de M6. Coordina el dominio (Viaje) con los puertos: repositorio y validador del QR.
+ * Los eventos no se publican acá: se guardan con el viaje en la bandeja de salida y el
+ * RelevadorDeEventos los publica después (patrón outbox). No sabe nada de HTTP.
  */
 @Injectable()
 export class ViajesService {
-  private readonly logger = new Logger(ViajesService.name);
-
   constructor(
     @Inject(REPOSITORIO_VIAJES) private readonly repositorio: RepositorioViajes,
-    @Inject(PUBLICADOR_EVENTOS) private readonly publicador: PublicadorEventos,
     @Inject(VALIDADOR_CODIGO) private readonly validadorCodigo: ValidadorCodigoVerificacion,
     @Inject(RELOJ) private readonly reloj: Reloj,
     @Inject(CONFIGURACION_VIAJES) private readonly config: ConfiguracionViaje,
@@ -67,13 +63,9 @@ export class ViajesService {
     }
 
     const nuevo = Viaje.crear({ ...datos, id: randomUUID() }, ctx.actor, this.reloj.ahora());
-    const guardado = await this.repositorio.insertar(nuevo);
-    if (guardado !== nuevo) {
-      // Otro pedido con la misma asignación lo guardó primero.
-      return { viaje: guardado, creado: false };
-    }
-    await this.publicarEvento(nuevo, ctx);
-    return { viaje: nuevo, creado: true };
+    const guardado = await this.repositorio.insertar(nuevo, [eventoDeUltimaTransicion(nuevo, ctx.idCorrelacion)]);
+    // Si otro pedido con la misma asignación lo guardó primero, se devuelve ese (y no hay evento nuevo).
+    return { viaje: guardado, creado: guardado === nuevo };
   }
 
   async obtener(viajeId: string, ctx: Contexto): Promise<Viaje> {
@@ -138,7 +130,7 @@ export class ViajesService {
 
   /**
    * Esqueleto común de todas las transiciones:
-   * leer → verificar If-Match → aplicar la acción → guardar con control de versión → publicar evento.
+   * leer → verificar If-Match → aplicar la acción → guardar viaje y evento juntos, con control de versión.
    */
   private async ejecutar(
     viajeId: string,
@@ -156,19 +148,8 @@ export class ViajesService {
     }
 
     await accion(viaje, this.reloj.ahora());
-    await this.repositorio.actualizar(viaje, versionLeida);
-    await this.publicarEvento(viaje, ctx);
+    await this.repositorio.actualizar(viaje, versionLeida, [eventoDeUltimaTransicion(viaje, ctx.idCorrelacion)]);
     return viaje;
-  }
-
-  private async publicarEvento(viaje: Viaje, ctx: Contexto): Promise<void> {
-    const evento = eventoDeUltimaTransicion(viaje, ctx.idCorrelacion);
-    try {
-      await this.publicador.publicar(evento);
-    } catch (error) {
-      // El cambio de estado ya quedó guardado. En TP2 el patrón outbox reintentará la publicación.
-      this.logger.error(`No se pudo publicar ${evento.tipo} del viaje ${viaje.id}: ${String(error)}`);
-    }
   }
 
   private puedeVer(viaje: Viaje, actor: Actor): boolean {

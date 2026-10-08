@@ -1,6 +1,6 @@
-# M6 completo para desarrollo local: PostgreSQL + servicio.
-#   npm run db:levantar       → sólo la base (para usar con `npm run start:dev`)
-#   npm run docker:levantar   → base + servicio en contenedores (no hace falta Node instalado)
+# M6 completo para desarrollo local: PostgreSQL + RabbitMQ + servicio.
+#   npm run infra:levantar    → sólo PostgreSQL y RabbitMQ (para usar con `npm run start:dev`)
+#   npm run docker:levantar   → todo en contenedores (no hace falta Node instalado)
 # Los valores se toman de m6-viajes/.env. Las credenciales por defecto son sólo para desarrollo (RNF-06).
 services:
   postgres:
@@ -13,13 +13,31 @@ services:
       - "${POSTGRES_PUERTO:-5432}:5432"
     volumes:
       - datos-postgres:/var/lib/postgresql/data
-      # Crea también la base m6_viajes_test para `npm run test:postgres`.
+      # Crea también la base m6_viajes_test para `npm run test:infra`.
       - ./docker/postgres/crear-base-de-tests.sql:/docker-entrypoint-initdb.d/01-crear-base-de-tests.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d m6_viajes"]
       interval: 2s
       timeout: 3s
       retries: 30
+
+  rabbitmq:
+    # Incluye la consola web de administración en http://localhost:15672 (usuario y clave: m6 / m6).
+    image: rabbitmq:3.13.7-management-alpine
+    environment:
+      # El usuario "guest" de RabbitMQ sólo puede conectarse desde la misma máquina, así que se crea otro.
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USUARIO:-m6}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_CLAVE:-m6}
+    ports:
+      - "${RABBITMQ_PUERTO:-5672}:5672"
+      - "${RABBITMQ_PUERTO_CONSOLA:-15672}:15672"
+    volumes:
+      - datos-rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   m6-viajes:
     # Imagen versionada (RNF-04). El contexto es la raíz del repo porque la imagen incluye contratos/.
@@ -30,11 +48,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       PUERTO: 3000
       PERSISTENCIA: postgres
       # Dentro de la red de Docker la base se llama "postgres", no "localhost".
       BASE_DATOS_URL: postgres://${POSTGRES_USER:-m6}:${POSTGRES_PASSWORD:-m6}@postgres:5432/m6_viajes
+      PUBLICADOR_EVENTOS: rabbitmq
+      RABBITMQ_URL: amqp://${RABBITMQ_USUARIO:-m6}:${RABBITMQ_CLAVE:-m6}@rabbitmq:5672
       JWT_SECRETO: "${JWT_SECRETO:?Falta JWT_SECRETO - copiá .env.example a .env}"
       VALIDADOR_QR: ${VALIDADOR_QR:-simulado}
       ESPERA_MINIMA_ARRIBO_MINUTOS: ${ESPERA_MINIMA_ARRIBO_MINUTOS:-5}
@@ -43,3 +65,4 @@ services:
 
 volumes:
   datos-postgres:
+  datos-rabbitmq:
