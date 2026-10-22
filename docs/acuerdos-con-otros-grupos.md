@@ -430,7 +430,7 @@ levantan los 9 módulos juntos.
 | Cómo se encuentran | Cada módulo recibe las URLs de los otros por variables de entorno (M6: `M8_URL`, `RABBITMQ_URL`, etc.); nada fijo en el código (RNF-06). |
 | Puertos | Una tabla con un puerto por módulo, para no chocar: por ejemplo M1 → 3001, …, M6 → 3006, …, M9 → 3009. |
 | Credenciales | Secretos fuera del repositorio, en un `.env` compartido por fuera de Git (RNF-06). |
-| Imágenes | Cada grupo publica la suya con una versión fija. La de M6 es `ghcr.io/facundoros9/m6-viajes:<versión>`. |
+| Imágenes | Cada grupo publica la suya con una versión fija. La de M6 es `ghcr.io/santileconte/m6-viajes:<versión>`. |
 | Monitoreo | Cada módulo expone un health check. M6: `GET /salud` y `GET /salud/detalle`. |
 | Datos de demo | Usuarios, conductores y vehículos de prueba con **los mismos ids** en todos los módulos. |
 | Correlación | Todos propagan `X-Correlation-Id` y lo incluyen en sus logs, para seguir un viaje de punta a punta. |

@@ -475,7 +475,7 @@ tests (RNF-17).
    - construye la imagen con el `Dockerfile`;
    - la arranca y verifica que `/salud` responda;
    - si el push es a la rama `main`, la publica en GitHub Container Registry como
-     `ghcr.io/facundoros9/m6-viajes:<versión>`, `:sha-<commit>` y `:latest`.
+     `ghcr.io/santileconte/m6-viajes:<versión>`, `:sha-<commit>` y `:latest`.
 
 **Detalles:**
 - Si llega un push nuevo a la misma rama, se cancela la corrida anterior (`concurrency`).
@@ -487,18 +487,8 @@ tests (RNF-17).
 - Se reprodujeron acá los mismos pasos con las mismas imágenes de PostgreSQL y RabbitMQ: tipos y
   contratos OK, 42 tests unitarios, 47 de integración, y la imagen respondió `/salud`.
 
-⚠️ **Pendiente de confirmar en GitHub:** desde la conexión de Claude con GitHub el workflow no
-aparecía registrado y la API respondía 404. Puede ser que **GitHub Actions esté desactivado** en el
-repositorio o que esa conexión no tenga permiso para ver Actions. Para revisarlo:
-1. Entrar al repo en GitHub → pestaña **Actions**.
-2. Si aparece un botón para habilitar workflows, habilitarlo.
-3. Si no aparece ninguna corrida, ir a **Settings** → **Actions** → **General** → "Allow all
-   actions and reusable workflows" → **Save**, y después **Run workflow** desde la pestaña
-   **Actions**.
-
-**Sobre la rama `main`:** hoy el repo sólo tiene la rama `claude/amazing-ramanujan-h70f8m`, que
-es la rama por defecto. La publicación de la imagen se activa cuando exista `main` y se haga push
-a ella, por ejemplo al mergear un pull request.
+**Sobre la rama `main`:** la publicación de la imagen se activa con cada push a `main`, por
+ejemplo al mergear un pull request.
 
 ---
 
@@ -740,6 +730,35 @@ entrega):
 
 ---
 
+## Paso 17 – Repositorio definitivo con rama `main`
+
+**Qué se hizo:** el proyecto pasó a https://github.com/santileconte/grupo-5-dds-M6, con la rama
+`main` como rama por defecto. Se conservó toda la historia de commits (pasos 1 a 16) con autoría
+del grupo, y se actualizaron el badge del README y el nombre de la imagen publicada
+(`ghcr.io/santileconte/m6-viajes`).
+
+**Por qué:** tener un único repo del grupo con `main` como rama principal, que es además la rama
+desde la que el CI publica la imagen.
+
+✅ **Verificación:**
+- `npm run typecheck`: sin errores.
+- `npm test`: 54 tests unitarios y 53 de integración en verde.
+- `npm run test:infra` (con `npm run infra:levantar`): 70 tests en verde contra PostgreSQL,
+  RabbitMQ y Redis reales.
+- `npm run contratos:validar`: OpenAPI y AsyncAPI válidos.
+- El workflow de GitHub Actions corrió en el repo nuevo (ver pestaña **Actions**).
+
+**Para el Codespace:** hay que abrir un Codespace nuevo desde el repo nuevo, o cambiar el remoto
+del existente desde la raíz:
+
+```bash
+git remote set-url origin https://github.com/santileconte/grupo-5-dds-M6.git
+git fetch origin
+git checkout main
+```
+
+---
+
 ## Problemas que aparecieron al probar y cómo se resolvieron
 
 | Síntoma | Causa | Solución |
@@ -820,8 +839,8 @@ grupo-5-dds/
 
 ## Cómo traer los cambios y commitear
 
-Los cambios que hace Claude se suben a la rama `claude/amazing-ramanujan-h70f8m`. Para traerlos al
-Codespace, desde la raíz del repo:
+El trabajo se sube a la rama `main` de https://github.com/santileconte/grupo-5-dds-M6. Para traer
+los cambios al Codespace, desde la raíz del repo:
 
 ```bash
 git pull

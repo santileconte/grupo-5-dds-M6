@@ -1,6 +1,6 @@
 # Grupo 5 – M6: Viajes y Ciclo de Vida
 
-[![M6 Viajes - CI](https://github.com/facundoros9/grupo-5-dds/actions/workflows/m6-viajes.yml/badge.svg)](https://github.com/facundoros9/grupo-5-dds/actions/workflows/m6-viajes.yml)
+[![M6 Viajes - CI](https://github.com/santileconte/grupo-5-dds-M6/actions/workflows/m6-viajes.yml/badge.svg)](https://github.com/santileconte/grupo-5-dds-M6/actions/workflows/m6-viajes.yml)
 
 Desarrollo de Software 2026. La consigna describe una plataforma distribuida de movilidad urbana
 bajo demanda con nueve módulos. Al **Grupo 5** le corresponde **M6 – Viajes y Ciclo de Vida**:
