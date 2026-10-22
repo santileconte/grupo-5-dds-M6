@@ -731,25 +731,6 @@ entrega):
 
 ---
 
-## Paso 17 – Revisión de la redacción de la documentación
-
-**Qué se hizo:** se revisó la redacción del README, la máquina de estados, el catálogo de
-eventos, los acuerdos con otros grupos, los ADR y esta bitácora. Se reescribieron las partes
-narrativas para que fueran más claras y directas, con un tono formal, y se quitaron los emojis:
-las prioridades y los estados de los acuerdos, y la tabla de estado frente al TP1, quedaron
-expresados como texto. También se eliminaron de esta bitácora el paso sobre el cambio de
-repositorio y la sección "Cómo traer los cambios y commitear", y se corrigió en el README una
-frase desactualizada que indicaba que los eventos sólo se mostraban en la terminal.
-
-**Por qué:** la documentación forma parte de la entrega (RNF-20) y debe leerse como un trabajo
-práctico, sin perder precisión técnica.
-
-**Verificación:** se compararon los archivos antes y después del cambio. Los bloques de código,
-comandos, rutas, nombres de variables y diagramas quedaron idénticos, salvo los de las partes
-eliminadas. Sólo cambiaron archivos `.md`; el código y los contratos no se modificaron.
-
----
-
 ## Problemas que aparecieron al probar y cómo se resolvieron
 
 | Síntoma | Causa | Solución |
