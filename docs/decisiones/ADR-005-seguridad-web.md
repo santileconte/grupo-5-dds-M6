@@ -6,9 +6,9 @@
 ## Contexto
 
 RNF-12 pide autenticación, autorización, validación, HTTPS en entornos publicados y controles
-básicos de vulnerabilidades web. La autenticación y la autorización ya existían (JWT, roles y
-dueño del viaje), igual que la validación de entradas (DTOs con `whitelist`). Al revisar el
-servicio aparecieron estas brechas:
+básicos de vulnerabilidades web. La autenticación y la autorización ya estaban implementadas (JWT,
+roles y dueño del viaje), al igual que la validación de entradas (DTOs con `whitelist`). Al
+revisar el servicio se detectaron estas brechas:
 
 | Problema | Riesgo |
 |---|---|
@@ -48,5 +48,5 @@ servicio aparecieron estas brechas:
 - **La conexión a Redis se comparte** (`src/comun/redis/`) entre la idempotencia y el límite de
   pedidos. `IDEMPOTENCIA=redis` activa Redis para las dos cosas.
 - **Pendiente con M1:** pasar de HS256 con secreto compartido a una clave pública (RS256 + JWKS),
-  para que los módulos no compartan secretos (RF-1.4). La verificación está concentrada en
-  `autenticacion.guard.ts`, así que el cambio queda acotado.
+  para que los módulos no compartan secretos (RF-1.4). Como la verificación está concentrada en
+  `autenticacion.guard.ts`, el cambio queda acotado.

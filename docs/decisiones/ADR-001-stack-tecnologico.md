@@ -13,8 +13,8 @@ RNF-01 deja elegir lenguaje y framework, con aprobación y justificación técni
 - pruebas unitarias y de integración desde TP1 (RNF-07),
 - una imagen de contenedor reproducible (RNF-04).
 
-El grupo conoce JavaScript y TypeScript mejor que otros lenguajes, aunque todavía no domina un
-framework de backend.
+El grupo tiene más experiencia con JavaScript y TypeScript que con otros lenguajes, aunque todavía
+no domina ningún framework de backend.
 
 ## Decisión
 
@@ -28,17 +28,17 @@ framework de backend.
 
 ## Justificación
 
-- **Lenguaje conocido:** se usa el lenguaje que el grupo ya maneja, así el esfuerzo se va al
-  dominio y no a aprender un lenguaje nuevo.
+- **Lenguaje conocido:** al usar un lenguaje que el grupo ya maneja, el esfuerzo se concentra en
+  el dominio y no en aprender un lenguaje nuevo.
 - **NestJS da estructura:** módulos, controladores, servicios e inyección de dependencias de forma
-  estándar. Eso ayuda a un equipo con poca experiencia a mantener separadas las capas de dominio,
+  estándar. Esto ayuda a un equipo con poca experiencia a mantener separadas las capas de dominio,
   aplicación e infraestructura.
 - **Ecosistema para lo que viene:** `@nestjs/swagger` (OpenAPI), `@nestjs/microservices` y
   bibliotecas AMQP (RabbitMQ), `@nestjs/terminus` (health checks), clientes de Redis y Testcontainers
   para pruebas de integración.
 - **Por qué NestJS 11 y no 12:** NestJS 12 se distribuye sólo como ES Modules. Eso complica la
-  configuración de Jest y la mayoría de la documentación y los tutoriales disponibles todavía usan
-  la versión 11 con CommonJS. Se puede migrar más adelante sin tocar el dominio.
+  configuración de Jest, y la mayor parte de la documentación y los tutoriales disponibles todavía
+  usan la versión 11 con CommonJS. Se puede migrar más adelante sin tocar el dominio.
 - **Por qué TypeScript 5 y no 7:** ts-jest todavía no es compatible con TypeScript 7.
 
 ## Consecuencias

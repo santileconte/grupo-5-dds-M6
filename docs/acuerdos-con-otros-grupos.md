@@ -1,17 +1,17 @@
 # Acuerdos de integración con otros grupos
 
-M6 sólo funciona si los demás módulos lo llaman y escuchan sus eventos de la forma que definimos.
-Este documento junta, para cada grupo:
+M6 depende de que los demás módulos lo invoquen y consuman sus eventos de la forma que definimos.
+Este documento reúne, para cada grupo:
 - qué necesitamos acordar;
 - nuestra propuesta concreta;
 - las preguntas abiertas;
 - un **mensaje listo para mandar** (WhatsApp, Discord o mail).
 
-Cada módulo tiene **dos implementaciones**, así que el mismo mensaje va a los dos grupos de ese
-módulo (tabla de "Grupos y Módulos" de la consigna). Para M1 la consigna no asigna grupo, así que
-la consulta va a la cátedra.
+Cada módulo tiene **dos implementaciones**, por lo que el mismo mensaje se envía a los dos grupos
+de ese módulo (según la tabla de "Grupos y Módulos" de la consigna). Como la consigna no asigna
+grupo a M1, esa consulta se dirige a la cátedra.
 
-Cuando un acuerdo se cierre:
+Cuando se cierra un acuerdo:
 1. marcarlo en la tabla de seguimiento;
 2. anotar lo decidido en la sección del módulo;
 3. si cambia algo del contrato, actualizar `contratos/` y registrar el cambio en la bitácora.
@@ -20,23 +20,23 @@ Cuando un acuerdo se cierre:
 
 | Módulo | Grupos | Tema principal | Prioridad | Estado |
 |---|---|---|---|---|
-| M5 Despacho | 4 y 13 | Cómo se crea el viaje y cómo vuelve una solicitud al despacho | 🔴 Alta | ⬜ Sin enviar |
-| M8 Notificaciones | 7 y 10 | Generación y validación del QR | 🔴 Alta | ⬜ Sin enviar |
-| Cátedra | — | Quién hace M1, formato del token y aprobación del stack (RNF-01) | 🔴 Alta | ⬜ Sin enviar |
-| M6 (otra impl.) | 12 | Unificar el contrato de M6 | 🔴 Alta | ⬜ Sin enviar |
-| M7 Pagos | 6 y 11 | Datos para cobro y cargo de cancelación | 🟡 Media | ⬜ Sin enviar |
-| M4 Ubicación | 3 y 14 | Liberar al conductor al terminar o cancelar | 🟡 Media | ⬜ Sin enviar |
-| M2 Clientes | 1 y 17 | Historial de viajes y calificación | 🟢 Baja | ⬜ Sin enviar |
-| M3 Conductores | 2 y 15 | Calificación del cliente | 🟢 Baja | ⬜ Sin enviar |
-| M9 Reservas | 8 y 9 | Viajes originados en reservas | 🟢 Baja | ⬜ Sin enviar |
-| Todos | — | Convenciones comunes (errores, eventos, correlación, límites, tokens) | 🔴 Alta | ⬜ Sin enviar |
-| Equipo integrador | Todos | Infraestructura compartida, puertos, credenciales y datos de demo | 🟡 Media | ⬜ Sin enviar |
+| M5 Despacho | 4 y 13 | Cómo se crea el viaje y cómo vuelve una solicitud al despacho | Alta | Sin enviar |
+| M8 Notificaciones | 7 y 10 | Generación y validación del QR | Alta | Sin enviar |
+| Cátedra | — | Quién hace M1, formato del token y aprobación del stack (RNF-01) | Alta | Sin enviar |
+| M6 (otra impl.) | 12 | Unificar el contrato de M6 | Alta | Sin enviar |
+| M7 Pagos | 6 y 11 | Datos para cobro y cargo de cancelación | Media | Sin enviar |
+| M4 Ubicación | 3 y 14 | Liberar al conductor al terminar o cancelar | Media | Sin enviar |
+| M2 Clientes | 1 y 17 | Historial de viajes y calificación | Baja | Sin enviar |
+| M3 Conductores | 2 y 15 | Calificación del cliente | Baja | Sin enviar |
+| M9 Reservas | 8 y 9 | Viajes originados en reservas | Baja | Sin enviar |
+| Todos | — | Convenciones comunes (errores, eventos, correlación, límites, tokens) | Alta | Sin enviar |
+| Equipo integrador | Todos | Infraestructura compartida, puertos, credenciales y datos de demo | Media | Sin enviar |
 
-Estados: ⬜ Sin enviar · 📤 Enviado · 💬 En discusión · ✅ Acordado
+Estados posibles: Sin enviar, Enviado, En discusión y Acordado.
 
 ### Novedades desde la primera versión de este documento
 
-Estos puntos se sumaron a los mensajes porque cambian cómo nos llaman o nos escuchan:
+Estos puntos se incorporaron a los mensajes porque cambian la forma en que otros módulos invocan a M6 o consumen sus eventos:
 
 | Novedad | A quién afecta | Qué tienen que hacer |
 |---|---|---|
@@ -51,14 +51,14 @@ Los contratos completos están en el repositorio:
 - `contratos/eventos/m6-viajes.asyncapi.yaml`: los eventos.
 - `docs/catalogo-eventos.md`: versión legible de los eventos.
 
-Conviene adjuntar los archivos o compartir el link al repo junto con cada mensaje.
+Junto con cada mensaje conviene adjuntar los archivos o compartir el enlace al repositorio.
 
 ---
 
 ## Para todos: convenciones comunes
 
-**Por qué:** si cada grupo usa un formato de error, de evento o de token distinto, la integración
-del TP2 se vuelve muy difícil. Lo ideal es acordarlo una sola vez para todos.
+**Por qué:** si cada grupo usa un formato distinto de error, de evento o de token, la integración
+del TP2 se complica considerablemente. Lo conveniente es acordarlo una sola vez para todos.
 
 **Propuesta:**
 
@@ -96,10 +96,10 @@ del TP2 se vuelve muy difícil. Lo ideal es acordarlo una sola vez para todos.
 
 ---
 
-## M5 – Solicitud y Despacho (Grupos 4 y 13) 🔴
+## M5 – Solicitud y Despacho (Grupos 4 y 13)
 
-**Qué necesitamos:** M5 es quien **crea** el viaje en M6. Además, cuando un conductor cancela antes
-de empezar, la solicitud tiene que **volver** a M5 para buscar otro conductor.
+**Qué necesitamos:** M5 es el módulo que **crea** el viaje en M6. Además, cuando un conductor
+cancela antes de iniciar, la solicitud debe **volver** a M5 para que busque otro conductor.
 
 **Propuesta:**
 
@@ -167,9 +167,9 @@ de empezar, la solicitud tiene que **volver** a M5 para buscar otro conductor.
 
 ---
 
-## M8 – Notificaciones, Documentos y Soporte (Grupos 7 y 10) 🔴
+## M8 – Notificaciones, Documentos y Soporte (Grupos 7 y 10)
 
-**Qué necesitamos:** según RF-8.3, el QR de un solo uso lo **genera M8**, y M6 tiene que
+**Qué necesitamos:** según RF-8.3, el QR de un solo uso lo **genera M8**, y M6 debe
 **validarlo** para iniciar el viaje (RF-6.4). Además, M8 notifica los hitos y genera el
 comprobante a partir de nuestros eventos.
 
@@ -225,7 +225,7 @@ comprobante a partir de nuestros eventos.
 
 ---
 
-## Cátedra: M1, formato del token y aprobación del stack 🔴
+## Cátedra: M1, formato del token y aprobación del stack
 
 **Qué necesitamos:**
 1. **M1 (Identidad y Acceso):** la tabla de grupos de la consigna no le asigna grupo. Todos los
@@ -265,10 +265,10 @@ tokens de servicio con `rol: SERVICIO` para llamadas entre módulos (M5 → M6, 
 
 ---
 
-## M6 – Otra implementación (Grupo 12) 🔴
+## M6 – Otra implementación (Grupo 12)
 
 **Qué necesitamos:** M6 tiene dos implementaciones. Para que el equipo integrador pueda usar
-cualquiera de las dos, **el contrato tiene que ser el mismo**: rutas, campos, estados, errores y
+cualquiera de las dos, **el contrato debe ser el mismo**: rutas, campos, estados, errores y
 eventos.
 
 **Propuesta:** usar nuestro contrato como base de discusión, revisarlo juntos y unificar las
@@ -294,10 +294,10 @@ diferencias. Puntos donde es más probable que hayamos decidido distinto:
 
 ---
 
-## M7 – Tarifas, Pagos y Liquidaciones (Grupos 6 y 11) 🟡
+## M7 – Tarifas, Pagos y Liquidaciones (Grupos 6 y 11)
 
-**Qué necesitamos:** M7 cobra cuando el viaje termina y decide el cargo si se cancela. M6 **no
-calcula importes**: sólo publica los datos.
+**Qué necesitamos:** M7 cobra cuando el viaje termina y decide si corresponde un cargo cuando se
+cancela. M6 **no calcula importes**: sólo publica los datos.
 
 **Propuesta:**
 - **`ViajeFinalizado`** trae `viajeId, solicitudId, reservaId, clienteId, conductorId,
@@ -308,7 +308,7 @@ calcula importes**: sólo publica los datos.
   canceló el cliente después del arribo".
 - **`ViajeIniciado`**, si quieren autorizar el pago al inicio.
 
-- ⚠️ **Eventos repetidos:** `ViajeFinalizado` puede llegar más de una vez, por la entrega "al
+- **Eventos repetidos:** `ViajeFinalizado` puede llegar más de una vez, por la entrega "al
   menos una vez". M7 **tiene** que ignorar los `idEvento` (o los `viajeId`) ya cobrados; si no,
   cobraría dos veces (RF-7.6, RNF-09).
 
@@ -337,7 +337,7 @@ calcula importes**: sólo publica los datos.
 
 ---
 
-## M4 – Ubicación y Disponibilidad (Grupos 3 y 14) 🟡
+## M4 – Ubicación y Disponibilidad (Grupos 3 y 14)
 
 **Qué necesitamos:** cuando un viaje termina o se cancela, el conductor vuelve a estar disponible
 (RF-4.4).
@@ -356,7 +356,7 @@ llama a M4.
 
 ---
 
-## M2 – Clientes (Grupos 1 y 17) 🟢
+## M2 – Clientes (Grupos 1 y 17)
 
 **Qué necesitamos:**
 - RF-2.4: M2 muestra el historial del cliente **consultando nuestra API**, no nuestra base.
@@ -382,7 +382,7 @@ llama a M4.
 
 ---
 
-## M3 – Conductores y Vehículos (Grupos 2 y 15) 🟢
+## M3 – Conductores y Vehículos (Grupos 2 y 15)
 
 **Qué necesitamos:** RF-3.7, la calificación del cliente por parte del conductor tras un viaje
 completado. Es el mismo mecanismo que con M2.
@@ -397,7 +397,7 @@ completado. Es el mismo mecanismo que con M2.
 
 ---
 
-## M9 – Reservas de Viajes (Grupos 8 y 9) 🟢
+## M9 – Reservas de Viajes (Grupos 8 y 9)
 
 **Qué necesitamos:** una reserva activada termina en una solicitud de M5, que crea un viaje en M6
 con `reservaId`. M9 puede querer saber cómo sigue ese viaje.
@@ -416,11 +416,11 @@ la reserva vinculada, por ejemplo marcándola cumplida con `ViajeFinalizado`.
 
 ---
 
-## Equipo integrador (todos los grupos) 🟡
+## Equipo integrador (todos los grupos)
 
 **Qué necesitamos:** la consigna menciona un "equipo integrador" que opera una instancia completa
 y acuerda versiones, configuración y datos de demostración. Para el TP2 hay que definir cómo se
-levantan los 9 módulos juntos.
+levantan los 9 módulos en conjunto.
 
 **Temas a acordar:**
 

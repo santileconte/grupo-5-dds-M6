@@ -1,17 +1,17 @@
 # Bitácora del trabajo – M6 Viajes y Ciclo de Vida
 
-Este documento cuenta, en orden, todo lo que hicimos desde el repositorio vacío hasta tener el
-servicio M6 funcionando con base de datos. Para cada paso explica **qué** se hizo, **por qué**
-y **cómo comprobarlo**. Al final hay una sección con los problemas que aparecieron al probar y
-cómo se resolvieron.
+Este documento registra, en orden cronológico, el trabajo realizado desde el repositorio vacío
+hasta el estado actual del servicio M6. Cada paso indica **qué** se hizo, **por qué** y **cómo
+se comprobó**. Al final se incluyen los problemas que aparecieron al probar y cómo se
+resolvieron.
 
 ---
 
 ## Paso 0 – Entender la consigna
 
-La consigna describe una plataforma de movilidad urbana tipo Uber, dividida en 9 módulos (M1 a
-M9). Cada módulo lo desarrolla un grupo distinto, y después todos se integran. Al **Grupo 5** le
-toca **M6 – Viajes y Ciclo de Vida**.
+La consigna describe una plataforma de movilidad urbana similar a Uber, dividida en 9 módulos
+(M1 a M9). Cada módulo lo desarrolla un grupo distinto y luego todos se integran. Al **Grupo 5**
+le corresponde **M6 – Viajes y Ciclo de Vida**.
 
 **Responsabilidad de M6:** controlar los estados del viaje (arribo, inicio, finalización y
 cancelación) y guardar un historial auditable.
@@ -42,26 +42,26 @@ contenedores, datos propios, configuración externa, pruebas, concurrencia y doc
 
 ## Paso 1 – Elegir por dónde empezar y con qué tecnología
 
-**Decisión 1: empezar por el contrato, no por el código.** El repositorio existe para "definir
-las interfaces entre módulos con OpenAPI", y otros grupos dependen de lo que publiquemos. Por eso
-el orden fue:
+**Decisión 1: empezar por el contrato y no por el código.** El objetivo del repositorio es
+"definir las interfaces entre módulos con OpenAPI", y otros grupos dependen de lo que
+publiquemos. Por eso el orden de trabajo fue:
 
 1. máquina de estados;
 2. contrato OpenAPI;
 3. catálogo de eventos;
 4. recién después, el código.
 
-**Decisión 2: TypeScript con NestJS.** El grupo conoce JavaScript y TypeScript. NestJS da una
-estructura ordenada (módulos, controladores, servicios), útil para un equipo con poca
+**Decisión 2: TypeScript con NestJS.** El grupo conoce JavaScript y TypeScript, y NestJS aporta
+una estructura ordenada (módulos, controladores, servicios), útil para un equipo con poca
 experiencia en backend.
 
 - Se usó **NestJS 11** y no la 12: la 12 sólo funciona como "ES Modules", lo que complica los
   tests, y casi toda la documentación disponible es de la 11.
 - Se usó **TypeScript 5** y no la 7: la herramienta de tests (ts-jest) todavía no soporta la 7.
 
-📄 Queda documentado en [`docs/decisiones/ADR-001-stack-tecnologico.md`](decisiones/ADR-001-stack-tecnologico.md).
-Un ADR ("Architecture Decision Record") es un documento corto que registra una decisión técnica y
-su justificación. Es lo que pide RNF-01.
+La decisión queda documentada en [`docs/decisiones/ADR-001-stack-tecnologico.md`](decisiones/ADR-001-stack-tecnologico.md).
+Un ADR ("Architecture Decision Record") es un documento breve que registra una decisión técnica y
+su justificación, tal como pide RNF-01.
 
 ---
 
@@ -107,10 +107,10 @@ ASIGNADO → CONDUCTOR_ARRIBADO → EN_CURSO → FINALIZADO
 
 ## Paso 3 – Contrato OpenAPI
 
-**Qué es:** un archivo que describe exactamente la API de M6: rutas, datos que recibe, qué
-responde y qué errores puede dar. Es el "acuerdo" con los otros grupos.
+**Qué es:** un archivo que describe con precisión la API de M6: rutas, datos de entrada,
+respuestas y errores posibles. Funciona como el "acuerdo" con los otros grupos.
 
-📄 [`contratos/m6-viajes.openapi.yaml`](../contratos/m6-viajes.openapi.yaml)
+Archivo: [`contratos/m6-viajes.openapi.yaml`](../contratos/m6-viajes.openapi.yaml)
 
 | Endpoint | Quién lo usa | Para qué |
 |---|---|---|
@@ -136,10 +136,11 @@ responde y qué errores puede dar. Es el "acuerdo" con los otros grupos.
 
 ## Paso 4 – Catálogo de eventos
 
-**Qué es:** la descripción de los mensajes que M6 publica para avisar a los otros módulos que algo
-pasó. Así M6 no necesita llamar a cada módulo: avisa y cada uno reacciona.
+**Qué es:** la descripción de los mensajes que M6 publica para informar a los otros módulos que
+ocurrió algo. De esta forma M6 no necesita llamar a cada módulo: publica el aviso y cada uno
+reacciona.
 
-📄 [`contratos/eventos/m6-viajes.asyncapi.yaml`](../contratos/eventos/m6-viajes.asyncapi.yaml)
+Archivos: [`contratos/eventos/m6-viajes.asyncapi.yaml`](../contratos/eventos/m6-viajes.asyncapi.yaml)
 (formato AsyncAPI) y [`docs/catalogo-eventos.md`](catalogo-eventos.md) (versión legible).
 
 | Evento | Cuándo | Lo usan |
@@ -151,11 +152,11 @@ pasó. Así M6 no necesita llamar a cada módulo: avisa y cada uno reacciona.
 | `ViajeCancelado` | Al cancelar | M5 (redespacho), M7 (cargo), M8, M4, M9 |
 
 Todos usan el mismo "sobre": `idEvento`, `tipo`, `version`, `ocurridoEn`, `productor`,
-`idCorrelacion` y `datos`. **Por privacidad no llevan coordenadas ni datos personales.** En TP2
-se publicarán en RabbitMQ; por ahora se muestran en la terminal con la etiqueta `[Eventos]`.
+`idCorrelacion` y `datos`. **Por privacidad no llevan coordenadas ni datos personales.** En esta
+etapa los eventos todavía se mostraban en la terminal con la etiqueta `[Eventos]`; la publicación
+en RabbitMQ se incorporó en el paso 11.
 
-**Validación:** `npm run contratos:validar` revisa que el OpenAPI y el AsyncAPI estén bien
-escritos. Además hay un test (`contrato.spec.ts`) que falla si los valores del código (estados,
+**Validación:** `npm run contratos:validar` verifica que el OpenAPI y el AsyncAPI sean válidos. Además hay un test (`contrato.spec.ts`) que falla si los valores del código (estados,
 motivos, códigos de error) dejan de coincidir con los de los contratos.
 
 ---
@@ -176,7 +177,7 @@ npm run start:dev   # levanta el servidor
 `Nest application successfully started`. La terminal queda "ocupada" mientras el servidor corre;
 `Ctrl + C` lo detiene.
 
-✅ **Primera prueba:** en el Codespace, al abrir `https://<codespace>-3000.app.github.dev/salud`
+**Primera prueba:** en el Codespace, al abrir `https://<codespace>-3000.app.github.dev/salud`
 apareció `{"estado":"OK"}`.
 
 ---
@@ -240,7 +241,7 @@ reciben 409.
    - `POST /viajes/{id}/finalizacion` con `{"distanciaRecorridaMetros": 4200}` → `FINALIZADO`
 5. **Ver el historial.** `GET /viajes/{id}/historial` muestra todas las transiciones.
 
-✅ **Segunda prueba:** se creó el viaje y la API respondió con `estado: ASIGNADO`, `version: 1`,
+**Segunda prueba:** se creó el viaje y la API respondió con `estado: ASIGNADO`, `version: 1`,
 `ETag: "1"` y un `x-correlation-id`.
 
 ---
@@ -294,18 +295,18 @@ SELECT * FROM transiciones_viaje;
 \q
 ```
 
-✅ **Tercera prueba:** con la base recién creada, `SELECT` devolvió `(0 rows)`. Después de crear
+**Tercera prueba:** con la base recién creada, `SELECT` devolvió `(0 rows)`. Después de crear
 un viaje en Swagger, devolvió el viaje `27829121-...` en estado `ASIGNADO`, versión 1.
 
 ---
 
 ## Paso 9 – Dockerfile: el servicio en un contenedor
 
-**Qué es:** el `Dockerfile` describe cómo armar una **imagen** del servicio: un paquete con Node,
-el código compilado y sus dependencias, listo para correr igual en cualquier máquina. Es lo que
-pide RNF-04: "imágenes OCI reproducibles y versionadas".
+**Qué es:** el `Dockerfile` describe cómo construir una **imagen** del servicio: un paquete con
+Node, el código compilado y sus dependencias, que se ejecuta de la misma forma en cualquier
+máquina. Responde a RNF-04: "imágenes OCI reproducibles y versionadas".
 
-📄 [`m6-viajes/Dockerfile`](../m6-viajes/Dockerfile)
+Archivo: [`m6-viajes/Dockerfile`](../m6-viajes/Dockerfile)
 
 **Cómo está armado (dos etapas):**
 1. **Compilación:** instala todas las dependencias, compila TypeScript a JavaScript y después
@@ -344,7 +345,7 @@ matando el proceso, porque el servicio no escuchaba la señal de apagado. Se agr
 `app.enableShutdownHooks()` en `main.ts`. Ahora se detiene al instante y cierra las conexiones a la
 base (en el log aparece `[PostgreSQL] Conexiones cerradas`).
 
-✅ **Prueba:**
+**Prueba:**
 - se construyó la imagen;
 - `docker compose up` dejó los dos contenedores `healthy`;
 - las migraciones se aplicaron solas, `/salud` y `/docs` respondieron;
@@ -355,11 +356,11 @@ base (en el log aparece `[PostgreSQL] Conexiones cerradas`).
 
 ## Paso 10 – Preparar los acuerdos con los otros grupos
 
-**Qué es:** M6 depende de cómo lo usen los demás módulos. M5 lo crea, M8 valida el QR, M7 cobra
-y M2, M3, M4 y M9 escuchan sus eventos. Lo que definimos en el contrato es sólo una **propuesta**
-hasta que los otros grupos lo acepten.
+**Qué es:** M6 depende de cómo lo usen los demás módulos: M5 crea el viaje, M8 valida el QR, M7
+cobra, y M2, M3, M4 y M9 consumen sus eventos. Lo definido en el contrato es sólo una
+**propuesta** hasta que los otros grupos la acepten.
 
-📄 [`docs/acuerdos-con-otros-grupos.md`](acuerdos-con-otros-grupos.md)
+Archivo: [`docs/acuerdos-con-otros-grupos.md`](acuerdos-con-otros-grupos.md)
 
 **Qué contiene:**
 - **Tabla de seguimiento** por módulo: grupos a contactar (cada módulo tiene dos
@@ -384,17 +385,17 @@ Si un acuerdo cambia el contrato, hay que actualizar `contratos/` y el código, 
 esta bitácora.
 
 **Cambio en el flujo de trabajo:** a partir de este paso, los commits y el push los hace el grupo.
-Los comandos están en la sección "Cómo traer los cambios y commitear" más abajo.
 
 ---
 
 ## Paso 11 – Eventos en RabbitMQ con bandeja de salida (outbox)
 
-**Qué es:** hasta acá los eventos sólo se mostraban en la terminal. Ahora se publican de verdad en
-**RabbitMQ** (RNF-10), que es el "cartero" por el que los otros módulos reciben los avisos de M6.
+**Qué es:** hasta este paso los eventos sólo se mostraban en la terminal. A partir de aquí se
+publican en **RabbitMQ** (RNF-10), el broker de mensajería a través del cual los otros módulos
+reciben los avisos de M6.
 
 **El problema que resuelve el outbox:** guardar el viaje en la base y publicar el evento en
-RabbitMQ son dos cosas separadas. Si una sale bien y la otra mal:
+RabbitMQ son dos operaciones separadas. Si una se completa y la otra falla:
 - se finaliza un viaje y el evento se pierde, entonces M7 nunca cobra; o
 - se publica un evento de un cambio que no se guardó.
 
@@ -431,12 +432,12 @@ RabbitMQ son dos cosas separadas. Si una sale bien y la otra mal:
   `cp .env.example .env`.
 - Sin Docker: `PUBLICADOR_EVENTOS=log` y `PERSISTENCIA=memoria`.
 
-**Algo importante para los otros grupos:** un evento puede llegar **dos veces**, por ejemplo si el
+**Aspecto relevante para los otros grupos:** un evento puede llegar **dos veces**, por ejemplo si el
 servicio se cae justo después de publicarlo. Cada consumidor debe ignorar los `idEvento` que ya
 procesó (RNF-09). Está explicado en `docs/catalogo-eventos.md`, sección "Cómo consumir los eventos
 de M6".
 
-✅ **Pruebas:**
+**Pruebas:**
 - **Tests nuevos:**
   - el relevador publica en orden y no duplica;
   - si el broker está caído no pierde nada;
@@ -456,11 +457,11 @@ de M6".
 
 ## Paso 12 – Integración continua (CI) con GitHub Actions
 
-**Qué es:** un *workflow* que GitHub ejecuta solo en cada push o pull request que toque M6 o los
-contratos. Verifica que nada se haya roto, sin depender de que alguien se acuerde de correr los
-tests (RNF-17).
+**Qué es:** un *workflow* que GitHub ejecuta automáticamente en cada push o pull request que
+modifique M6 o los contratos. Verifica que no se haya roto nada, sin depender de que alguien
+recuerde correr los tests (RNF-17).
 
-📄 [`.github/workflows/m6-viajes.yml`](../.github/workflows/m6-viajes.yml)
+Archivo: [`.github/workflows/m6-viajes.yml`](../.github/workflows/m6-viajes.yml)
 
 **Qué hace, en dos etapas:**
 
@@ -482,7 +483,7 @@ tests (RNF-17).
 - También se puede correr a mano desde la pestaña **Actions** → "M6 Viajes - CI" → **Run workflow**.
 - El README muestra un *badge* verde o rojo con el estado del último CI.
 
-✅ **Verificación:**
+**Verificación:**
 - El workflow pasó **actionlint**, el validador de workflows de GitHub, sin errores.
 - Se reprodujeron acá los mismos pasos con las mismas imágenes de PostgreSQL y RabbitMQ: tipos y
   contratos OK, 42 tests unitarios, 47 de integración, y la imagen respondió `/salud`.
@@ -496,9 +497,9 @@ ejemplo al mergear un pull request.
 
 **Qué es:** cuando una app reintenta un pedido, por ejemplo porque se le cortó la conexión justo
 después de tocar "finalizar", el header `Idempotency-Key` hace que reciba la misma respuesta sin
-que la acción se ejecute dos veces (RNF-09). Hasta acá esas respuestas vivían en la memoria del
-servicio. Ahora se guardan en **Redis** (RNF-11), una base de datos en memoria muy rápida, pensada
-para datos que vencen solos.
+que la acción se ejecute dos veces (RNF-09). Hasta este paso esas respuestas se guardaban en la
+memoria del servicio. Ahora se guardan en **Redis** (RNF-11), un almacén en memoria de baja
+latencia, adecuado para datos con vencimiento automático.
 
 **Qué mejora frente a la versión en memoria:**
 
@@ -544,7 +545,7 @@ para datos que vencen solos.
 - **Jest tardaba en terminar:** al cerrar, el cliente de Redis esperaba 2 segundos por defecto
   (`disconnectTimeout`). Se alineó con el timeout configurado.
 
-✅ **Pruebas:**
+**Pruebas:**
 - **Tests nuevos:**
   - de 10 pedidos simultáneos con la misma clave, sólo 1 la reserva;
   - las claves vencen;
@@ -564,8 +565,8 @@ para datos que vencen solos.
 ## Paso 14 – Salud y diagnóstico: health checks y logs estructurados
 
 **Qué es:** RNF-14 pide *health checks, logs estructurados y correlación por identificador de
-solicitud, viaje o reserva*. Con esto, el equipo integrador puede responder rápido dos preguntas:
-"¿M6 anda bien?" y "¿qué pasó con el viaje X?".
+solicitud, viaje o reserva*. Con esto, el equipo integrador puede responder rápidamente dos
+preguntas: "¿M6 funciona correctamente?" y "¿qué pasó con el viaje X?".
 
 ### Health checks
 
@@ -599,10 +600,10 @@ Un componente apagado por configuración (por ejemplo, `IDEMPOTENCIA=memoria`) f
 - Para seguir un viaje: `npm run docker:logs | grep '"viajeId":"<id>"'`.
 - Con `LOG_FORMATO=texto` (el de `.env.example`) se ven como antes, más cómodos para programar.
 
-### 🐛 Bug importante encontrado al probar
+### Error importante encontrado al probar
 
 Para probar `/salud/detalle` se fueron apagando las dependencias una por una. **Al apagar
-PostgreSQL, el servicio entero se caía.** El pool de conexiones de `pg` emite un evento `error`
+PostgreSQL, se caía el servicio completo.** El pool de conexiones de `pg` emite un evento `error`
 cuando la base corta una conexión, y si nadie lo escucha, Node termina el proceso. El bug venía
 desde el paso 8.
 
@@ -610,7 +611,7 @@ desde el paso 8.
 Ahora, con la base caída, los pedidos fallan y `/salud/detalle` responde `ERROR`. Cuando la base
 vuelve, todo se recupera solo.
 
-✅ **Pruebas:**
+**Pruebas:**
 - **Tests nuevos:**
   - el logger escribe JSON válido, con correlación y stack de errores;
   - salud `OK`, `ERROR` (con timeout y sin credenciales) y `DEGRADADO` (RabbitMQ y Redis caídos, o
@@ -635,13 +636,13 @@ vuelve, todo se recupera solo.
 ## Paso 15 – Seguridad web (RNF-12)
 
 **Qué es:** RNF-12 pide autenticación, autorización, validación, HTTPS y "controles básicos de
-vulnerabilidades web". Las tres primeras ya existían (tokens JWT, roles, dueño del viaje y DTOs
-validados). Antes de agregar nada se **probó el servicio como lo haría un atacante**, y aparecieron
-estos problemas:
+vulnerabilidades web". Las tres primeras ya estaban implementadas (tokens JWT, roles, dueño del viaje y
+DTOs validados). Antes de agregar controles se **probó el servicio desde el punto de vista de un
+atacante**, y aparecieron estos problemas:
 
 | Prueba | Antes | Ahora |
 |---|---|---|
-| Mandar un cuerpo de 200 KB | `500 ERROR_INTERNO` 🐛 | `413 CUERPO_DEMASIADO_GRANDE` |
+| Mandar un cuerpo de 200 KB | `500 ERROR_INTERNO` (error) | `413 CUERPO_DEMASIADO_GRANDE` |
 | Usar un token **sin vencimiento** | Aceptado (200) | `401`: "El token debe tener vencimiento" |
 | Mirar los headers de respuesta | `X-Powered-By: Express`, sin defensas | CSP, HSTS, `nosniff`, `X-Frame-Options`; sin `X-Powered-By` |
 | Mandar miles de pedidos | Sin límite | 120 por minuto por usuario; después `429` con `Retry-After` |
@@ -673,7 +674,7 @@ estos problemas:
 **Para los tests:** los tokens de prueba ahora tienen vencimiento (`expiresIn`), como exige el
 servicio.
 
-✅ **Pruebas:**
+**Pruebas:**
 - **Tests nuevos:**
   - headers de seguridad;
   - 413 con cuerpo grande;
@@ -730,32 +731,22 @@ entrega):
 
 ---
 
-## Paso 17 – Repositorio definitivo con rama `main`
+## Paso 17 – Revisión de la redacción de la documentación
 
-**Qué se hizo:** el proyecto pasó a https://github.com/santileconte/grupo-5-dds-M6, con la rama
-`main` como rama por defecto. Se conservó toda la historia de commits (pasos 1 a 16) con autoría
-del grupo, y se actualizaron el badge del README y el nombre de la imagen publicada
-(`ghcr.io/santileconte/m6-viajes`).
+**Qué se hizo:** se revisó la redacción del README, la máquina de estados, el catálogo de
+eventos, los acuerdos con otros grupos, los ADR y esta bitácora. Se reescribieron las partes
+narrativas para que fueran más claras y directas, con un tono formal, y se quitaron los emojis:
+las prioridades y los estados de los acuerdos, y la tabla de estado frente al TP1, quedaron
+expresados como texto. También se eliminaron de esta bitácora el paso sobre el cambio de
+repositorio y la sección "Cómo traer los cambios y commitear", y se corrigió en el README una
+frase desactualizada que indicaba que los eventos sólo se mostraban en la terminal.
 
-**Por qué:** tener un único repo del grupo con `main` como rama principal, que es además la rama
-desde la que el CI publica la imagen.
+**Por qué:** la documentación forma parte de la entrega (RNF-20) y debe leerse como un trabajo
+práctico, sin perder precisión técnica.
 
-✅ **Verificación:**
-- `npm run typecheck`: sin errores.
-- `npm test`: 54 tests unitarios y 53 de integración en verde.
-- `npm run test:infra` (con `npm run infra:levantar`): 70 tests en verde contra PostgreSQL,
-  RabbitMQ y Redis reales.
-- `npm run contratos:validar`: OpenAPI y AsyncAPI válidos.
-- El workflow de GitHub Actions corrió en el repo nuevo (ver pestaña **Actions**).
-
-**Para el Codespace:** hay que abrir un Codespace nuevo desde el repo nuevo, o cambiar el remoto
-del existente desde la raíz:
-
-```bash
-git remote set-url origin https://github.com/santileconte/grupo-5-dds-M6.git
-git fetch origin
-git checkout main
-```
+**Verificación:** se compararon los archivos antes y después del cambio. Los bloques de código,
+comandos, rutas, nombres de variables y diagramas quedaron idénticos, salvo los de las partes
+eliminadas. Sólo cambiaron archivos `.md`; el código y los contratos no se modificaron.
 
 ---
 
@@ -807,23 +798,23 @@ grupo-5-dds/
 
 | Requisito | Estado | Dónde |
 |---|---|---|
-| RNF-01 Stack justificado | ✅ | ADR-001 |
-| RNF-02 Módulo con límites claros | ✅ | `m6-viajes/` |
-| RNF-03 Contratos OpenAPI y eventos | ✅ | `contratos/` |
-| RNF-04 Imagen de contenedor del servicio | ✅ | `m6-viajes/Dockerfile`, imagen `grupo5/m6-viajes:0.1.0` |
-| RNF-05 Persistencia propia | ✅ | PostgreSQL, ADR-002 |
-| RNF-06 Configuración externa | ✅ | `.env` / `.env.example` |
-| RNF-07 Tests unitarios y de integración | ✅ | `npm test`, `npm run test:infra` |
-| RNF-08 Concurrencia | ✅ | Versión + `UPDATE` condicional |
-| RNF-09 Idempotencia (TP2) | ✅ en M6 | `Idempotency-Key` en Redis, creación por `asignacionId`, eventos con `idEvento` |
-| RNF-10 Mensajería (TP2) | ✅ | RabbitMQ + outbox, ADR-003 |
-| RNF-11 Caché y vencimiento (TP2) | ✅ | Redis para `Idempotency-Key`, ADR-004 |
-| RNF-14 Salud y diagnóstico (TP2) | ✅ | `/salud`, `/salud/detalle`, logs JSON con `idCorrelacion`/`viajeId` |
-| RNF-17 Automatización (TP2) | ✅ | `.github/workflows/m6-viajes.yml`, corridas en verde en GitHub |
-| RNF-12 Seguridad (TP2-TP3) | ✅ (falta el token real de M1) | JWT con `exp`, roles, límite de pedidos, helmet, cuerpos acotados, `npm audit` en CI, ADR-005 |
-| RNF-13 Resiliencia (TP2) | ✅ | Timeouts con M8, RabbitMQ y Redis; eventos que esperan si el broker se cae; sin Redis se sigue operando; sobrevive a la caída de PostgreSQL |
-| RNF-20 Documentación | ✅ | README, docs/, ADRs |
-| RF-6.1 a RF-6.8 | ✅ | Dominio + API |
+| RNF-01 Stack justificado | Cumplido | ADR-001 |
+| RNF-02 Módulo con límites claros | Cumplido | `m6-viajes/` |
+| RNF-03 Contratos OpenAPI y eventos | Cumplido | `contratos/` |
+| RNF-04 Imagen de contenedor del servicio | Cumplido | `m6-viajes/Dockerfile`, imagen `grupo5/m6-viajes:0.1.0` |
+| RNF-05 Persistencia propia | Cumplido | PostgreSQL, ADR-002 |
+| RNF-06 Configuración externa | Cumplido | `.env` / `.env.example` |
+| RNF-07 Tests unitarios y de integración | Cumplido | `npm test`, `npm run test:infra` |
+| RNF-08 Concurrencia | Cumplido | Versión + `UPDATE` condicional |
+| RNF-09 Idempotencia (TP2) | Cumplido en M6 | `Idempotency-Key` en Redis, creación por `asignacionId`, eventos con `idEvento` |
+| RNF-10 Mensajería (TP2) | Cumplido | RabbitMQ + outbox, ADR-003 |
+| RNF-11 Caché y vencimiento (TP2) | Cumplido | Redis para `Idempotency-Key`, ADR-004 |
+| RNF-14 Salud y diagnóstico (TP2) | Cumplido | `/salud`, `/salud/detalle`, logs JSON con `idCorrelacion`/`viajeId` |
+| RNF-17 Automatización (TP2) | Cumplido | `.github/workflows/m6-viajes.yml`, corridas en verde en GitHub |
+| RNF-12 Seguridad (TP2-TP3) | Cumplido (falta el token real de M1) | JWT con `exp`, roles, límite de pedidos, helmet, cuerpos acotados, `npm audit` en CI, ADR-005 |
+| RNF-13 Resiliencia (TP2) | Cumplido | Timeouts con M8, RabbitMQ y Redis; eventos que esperan si el broker se cae; sin Redis se sigue operando; sobrevive a la caída de PostgreSQL |
+| RNF-20 Documentación | Cumplido | README, docs/, ADRs |
+| RF-6.1 a RF-6.8 | Cumplido | Dominio + API |
 
 ## Próximos pasos
 
@@ -835,27 +826,3 @@ grupo-5-dds/
      (idealmente RS256 con clave pública, configurando `JWT_EMISOR` y `JWT_AUDIENCIA`).
    - **Integración distribuida (RNF-07):** probar M6 junto con los módulos de los otros grupos.
 
----
-
-## Cómo traer los cambios y commitear
-
-El trabajo se sube a la rama `main` de https://github.com/santileconte/grupo-5-dds-M6. Para traer
-los cambios al Codespace, desde la raíz del repo:
-
-```bash
-git pull
-```
-
-Si cambió `.env.example` (lo dice la bitácora), volver a copiarlo: `cp m6-viajes/.env.example m6-viajes/.env`.
-
-Para guardar y subir **cambios propios** (por ejemplo, después de completar un acuerdo):
-
-```bash
-git status                     # ver qué archivos cambiaron
-git add -A                     # preparar todos los cambios
-git commit -m "Describir el cambio en una línea"
-git push
-```
-
-Si `git push` responde que la rama remota tiene cambios nuevos, primero hay que traerlos con
-`git pull` y después repetir `git push`.

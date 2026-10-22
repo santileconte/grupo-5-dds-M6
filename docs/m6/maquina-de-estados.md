@@ -7,10 +7,10 @@
 
 ## Alcance del módulo
 
-Un **viaje** nace cuando M5 (Solicitud y Despacho) ya resolvió la asignación única de un
-conductor. Todo lo anterior (búsqueda de candidatos, ofertas, aceptación) es de M5. Todo lo
-posterior al cierre (cobro, comprobante, calificaciones) lo hacen otros módulos reaccionando
-a los eventos que publica M6.
+Un **viaje** se crea cuando M5 (Solicitud y Despacho) ya resolvió la asignación única de un
+conductor. Las etapas previas (búsqueda de candidatos, ofertas y aceptación) corresponden a M5,
+y las posteriores al cierre (cobro, comprobante y calificaciones) las resuelven otros módulos a
+partir de los eventos que publica M6.
 
 ```
 M5 asigna conductor ──POST /viajes──▶ M6 administra el ciclo de vida ──eventos──▶ M7, M8, M5, M2/M3, M4, M9
@@ -55,8 +55,8 @@ stateDiagram-v2
 | cancelar           | `ASIGNADO`, `CONDUCTOR_ARRIBADO`   | `CANCELADO`          | Conductor asignado                | Motivo permitido para conductores (ver espera mínima).                 | `ViajeCancelado`     |
 | cancelar           | `ASIGNADO`, `CONDUCTOR_ARRIBADO`, `EN_CURSO` | `CANCELADO` | Operador                          | Motivo permitido para operadores.                                       | `ViajeCancelado`     |
 
-Cualquier otra combinación de acción y estado se rechaza con `409 TRANSICION_INVALIDA`, y
-una acción hecha por quien no corresponde se rechaza con `403 PROHIBIDO`. Los estados
+Cualquier otra combinación de acción y estado se rechaza con `409 TRANSICION_INVALIDA`. Si la
+acción la intenta un actor que no está habilitado, se rechaza con `403 PROHIBIDO`. Los estados
 terminales no admiten ninguna transición.
 
 ## Reglas de negocio
@@ -69,8 +69,8 @@ terminales no admiten ninguna transición.
 
 ### R6-02. Inicio validado (RF-6.4)
 El viaje pasa a `EN_CURSO` sólo si el conductor presenta el código del QR que muestra el
-cliente. Según RF-8.3, el QR temporal de un solo uso lo **genera M8**. M6 lo valida y lo
-consume contra M8 en el momento del inicio:
+cliente. Según RF-8.3, el QR temporal de un solo uso lo **genera M8**, y M6 le solicita a M8
+que lo valide y lo consuma en el momento del inicio:
 
 1. M8 genera el QR al recibir `ViajeCreado` y se lo muestra al cliente.
 2. El conductor escanea el QR y la app envía el código a `POST /viajes/{id}/inicio`.
@@ -122,9 +122,9 @@ comprobante.
 ### R6-08. Concurrencia (RNF-08)
 - Cada viaje tiene un número de `version` que aumenta con cada transición.
 - Al persistir, la actualización es **condicional** (`UPDATE ... WHERE id = ? AND version = ?`).
-  Si dos pedidos concurrentes intentan, por ejemplo, finalizar el mismo viaje, sólo uno
-  gana. El otro recibe `409` porque el estado o la versión ya cambiaron. Así no hay doble
-  finalización.
+  Si dos pedidos concurrentes intentan, por ejemplo, finalizar el mismo viaje, sólo uno se
+  aplica; el otro recibe `409` porque el estado o la versión ya cambiaron. De esta forma se
+  evita la doble finalización.
 - La API expone la versión como `ETag`. Los clientes pueden mandar `If-Match` para asegurar
   que actúan sobre la versión que vieron; si no coincide, reciben `412 PRECONDICION_FALLIDA`.
 - Un viaje por asignación: `asignacionId` es único. Repetir `POST /viajes` con la misma

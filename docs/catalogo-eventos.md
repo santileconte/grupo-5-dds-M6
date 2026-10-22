@@ -1,8 +1,8 @@
 # Catálogo de eventos
 
-Índice legible del catálogo común de eventos (RNF-03). La definición formal de cada módulo
-está en `contratos/eventos/<modulo>.asyncapi.yaml`. Este documento cubre lo que publica **M6**
-y sirve de plantilla para que los demás grupos agreguen sus eventos.
+Versión legible del catálogo común de eventos (RNF-03). La definición formal de cada módulo
+está en `contratos/eventos/<modulo>.asyncapi.yaml`. Este documento describe los eventos que
+publica **M6** y sirve como plantilla para que los demás grupos incorporen los suyos.
 
 ## Convenciones comunes (propuesta para el consorcio)
 
@@ -60,22 +60,23 @@ Todos los `datos` incluyen `viajeId`, `versionViaje`, `solicitudId`, `reservaId`
 
 ## Eventos que consume M6
 
-Ninguno por ahora: el viaje se crea por API (`POST /viajes`, invocado por M5). Si el consorcio
-decide que la asignación se comunique por evento (por ejemplo `despacho.asignacion.confirmada`),
-M6 lo consumiría con la misma lógica idempotente por `asignacionId`.
+Por ahora ninguno, porque el viaje se crea por API (`POST /viajes`, invocado por M5). Si el
+consorcio decide comunicar la asignación mediante un evento (por ejemplo
+`despacho.asignacion.confirmada`), M6 lo consumiría con la misma lógica idempotente por
+`asignacionId`.
 
 ## Garantía de publicación: bandeja de salida (outbox)
 
-**Ya implementado.** Cada evento se guarda en la tabla `eventos_salientes` **en la misma
-transacción** que el cambio del viaje que lo origina. Un proceso aparte, el `RelevadorDeEventos`,
-revisa esa tabla cada segundo, publica los pendientes en RabbitMQ, en orden, y los marca como
-publicados.
+Este mecanismo ya está implementado. Cada evento se guarda en la tabla `eventos_salientes`
+**en la misma transacción** que el cambio del viaje que lo origina. Un proceso independiente, el
+`RelevadorDeEventos`, revisa esa tabla cada segundo, publica en orden los pendientes en RabbitMQ
+y los marca como publicados.
 
 - Si RabbitMQ está caído, el viaje sigue funcionando y los eventos quedan pendientes hasta que el
   broker vuelve (RNF-13).
 - Nunca se publica un evento de un cambio que no se guardó.
 - Un evento puede llegar **más de una vez**, por ejemplo si el servicio se cae justo después de
-  publicar. Por eso los consumidores tienen que descartar duplicados por `idEvento` (RNF-09).
+  publicar. Por eso los consumidores deben descartar duplicados por `idEvento` (RNF-09).
 
 ## Cómo consumir los eventos de M6 (para otros grupos)
 
@@ -87,4 +88,4 @@ publicados.
    `idEvento` ya procesados.
 
 Si la cola no existe en el momento en que M6 publica, RabbitMQ descarta el mensaje. Por eso cada
-consumidor tiene que crear su cola antes de empezar a recibir.
+consumidor debe crear su cola antes de empezar a recibir eventos.

@@ -5,13 +5,13 @@
 
 ## Contexto
 
-M6 avisa a otros módulos mediante eventos (RNF-03, RNF-10). El problema clásico es que guardar el
-cambio en la base y publicar en el broker son **dos operaciones separadas**. Si una funciona y la
-otra no:
+M6 informa a otros módulos mediante eventos (RNF-03, RNF-10). El problema habitual es que guardar
+el cambio en la base y publicar en el broker son **dos operaciones separadas**. Si una se completa
+y la otra falla:
 - se guardó el viaje pero el evento se perdió (M7 nunca cobra), o
 - se publicó un evento de un cambio que después falló (M8 notifica algo que no pasó).
 
-Además, el broker puede estar caído, y eso no debe bloquear los viajes (RNF-13).
+Además, una caída del broker no debe bloquear los viajes (RNF-13).
 
 ## Decisión
 

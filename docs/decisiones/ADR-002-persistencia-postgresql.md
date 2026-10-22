@@ -29,9 +29,9 @@ no destructivo (RF-6.8).
 ## Justificación
 
 - Las reglas críticas (versión, unicidad e inmutabilidad) se ven tal cual en el SQL y las
-  garantiza la base. Con un ORM quedan ocultas detrás de abstracciones que el grupo todavía no
-  conoce.
-- Son sólo dos tablas y pocas consultas, así que un ORM (TypeORM o Prisma) suma más configuración
+  garantiza la base. Con un ORM quedarían ocultas detrás de abstracciones que el grupo todavía
+  no conoce.
+- Con sólo dos tablas y pocas consultas, un ORM (TypeORM o Prisma) aportaría más configuración
   que beneficio.
 - El dominio no depende de la base: el repositorio en memoria sigue disponible
   (`PERSISTENCIA=memoria`) para desarrollar sin Docker y para los tests rápidos.

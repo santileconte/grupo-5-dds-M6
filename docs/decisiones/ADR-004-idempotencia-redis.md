@@ -8,7 +8,7 @@
 Las acciones de M6 (arribo, inicio, finalización y cancelación) aceptan el header
 `Idempotency-Key`. Si un cliente reintenta, por ejemplo porque se le cortó la conexión, recibe la
 misma respuesta sin que la acción se ejecute dos veces (RNF-09). Hasta ahora esas respuestas se
-guardaban en memoria, lo que trae tres problemas:
+guardaban en memoria, lo que presentaba tres problemas:
 - se perdían al reiniciar el servicio;
 - no servían con más de una instancia;
 - dos pedidos simultáneos con la misma clave podían ejecutarse los dos.
@@ -34,14 +34,15 @@ RNF-11 pide Redis para el estado efímero con vencimiento.
 ## Si Redis no está disponible (RNF-13)
 
 Los comandos tienen timeout de 1 segundo y no se encolan. Si Redis no responde, el pedido **se
-procesa igual, sin idempotencia**, y se registra un aviso en el log. Se eligió así porque las
-reglas del dominio siguen impidiendo efectos duplicados aunque no haya Redis: la versión del viaje
+procesa igual, sin idempotencia**, y se registra un aviso en el log. Se optó por este
+comportamiento porque las reglas del dominio siguen impidiendo efectos duplicados aunque Redis no
+esté disponible: la versión del viaje
 y la máquina de estados hacen que un reintento de "finalizar" responda `409 TRANSICION_INVALIDA`
-en lugar de finalizar dos veces (RNF-08). Bloquear todas las acciones porque se cayó una caché
-sería peor para el usuario.
+en lugar de finalizar dos veces (RNF-08). Bloquear todas las acciones por la caída de una caché
+perjudicaría más al usuario.
 
 ## Consecuencias
 
 - Un reintento durante una caída de Redis recibe `409` en lugar de la respuesta original. El viaje
-  queda bien; sólo cambia la respuesta.
+  queda en un estado correcto; sólo cambia la respuesta.
 - Redis no necesita volumen ni backups: todo lo que guarda vence solo.

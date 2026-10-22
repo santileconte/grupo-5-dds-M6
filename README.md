@@ -2,21 +2,22 @@
 
 [![M6 Viajes - CI](https://github.com/santileconte/grupo-5-dds-M6/actions/workflows/m6-viajes.yml/badge.svg)](https://github.com/santileconte/grupo-5-dds-M6/actions/workflows/m6-viajes.yml)
 
-Desarrollo de Software 2026. La consigna describe una plataforma distribuida de movilidad urbana
-bajo demanda con nueve módulos. Al **Grupo 5** le corresponde **M6 – Viajes y Ciclo de Vida**:
-estados del viaje, arribo, inicio, finalización, cancelación y auditoría.
+Trabajo práctico de Desarrollo de Software (2026). La consigna plantea una plataforma distribuida
+de movilidad urbana bajo demanda, organizada en nueve módulos. Al **Grupo 5** le corresponde
+**M6 – Viajes y Ciclo de Vida**, que abarca los estados del viaje, el arribo, el inicio, la
+finalización, la cancelación y la auditoría.
 
 ## Contenido del repositorio
 
-| Ruta | Qué hay |
+| Ruta | Contenido |
 |---|---|
-| [`docs/bitacora-del-trabajo.md`](docs/bitacora-del-trabajo.md) | Recorrido paso a paso de todo lo hecho hasta ahora, con los problemas encontrados al probar. |
-| [`docs/acuerdos-con-otros-grupos.md`](docs/acuerdos-con-otros-grupos.md) | Propuestas de integración y mensajes listos para cada grupo, con su seguimiento. |
+| [`docs/bitacora-del-trabajo.md`](docs/bitacora-del-trabajo.md) | Registro paso a paso del trabajo realizado y de los problemas encontrados al probar. |
+| [`docs/acuerdos-con-otros-grupos.md`](docs/acuerdos-con-otros-grupos.md) | Propuestas de integración y mensajes preparados para cada grupo, con su seguimiento. |
 | [`docs/m6/maquina-de-estados.md`](docs/m6/maquina-de-estados.md) | Estados, transiciones, reglas de negocio y temas pendientes de acordar con otros grupos. |
 | [`contratos/m6-viajes.openapi.yaml`](contratos/m6-viajes.openapi.yaml) | Contrato de la API síncrona (OpenAPI 3.1). |
 | [`contratos/eventos/m6-viajes.asyncapi.yaml`](contratos/eventos/m6-viajes.asyncapi.yaml) | Eventos que publica M6 (AsyncAPI 3.0). |
-| [`docs/catalogo-eventos.md`](docs/catalogo-eventos.md) | Catálogo legible de eventos y convenciones propuestas al consorcio. |
-| [`docs/decisiones/`](docs/decisiones) | Decisiones de arquitectura (ADR). |
+| [`docs/catalogo-eventos.md`](docs/catalogo-eventos.md) | Versión legible del catálogo de eventos y convenciones propuestas al consorcio. |
+| [`docs/decisiones/`](docs/decisiones) | Registros de decisiones de arquitectura (ADR). |
 | [`m6-viajes/`](m6-viajes) | Servicio en TypeScript y NestJS. |
 | [`.github/workflows/m6-viajes.yml`](.github/workflows/m6-viajes.yml) | CI: tipos, tests, contratos e imagen Docker en cada push. |
 
@@ -24,9 +25,9 @@ estados del viaje, arribo, inicio, finalización, cancelación y auditoría.
 
 Requisitos:
 - Node.js 22 (ver `.nvmrc`).
-- Docker, para PostgreSQL, RabbitMQ y Redis. En GitHub Codespaces ya viene instalado.
+- Docker, para PostgreSQL, RabbitMQ y Redis. GitHub Codespaces ya lo trae instalado.
 
-### Opción A: servicio con Node y base en Docker (para programar)
+### Opción A: servicio con Node y base en Docker (para desarrollo)
 
 ```bash
 cd m6-viajes
@@ -36,8 +37,8 @@ npm run infra:levantar       # levanta PostgreSQL, RabbitMQ y Redis en Docker (q
 npm run start:dev            # levanta el servicio en http://localhost:3000
 ```
 
-Al arrancar, el servicio crea las tablas que falten (migraciones de `migraciones/`). Los datos
-quedan guardados aunque reinicies el servicio o el Codespace.
+Al arrancar, el servicio aplica las migraciones pendientes de `migraciones/` y crea las tablas que
+falten. Los datos se conservan aunque se reinicie el servicio o el Codespace.
 
 ### Opción B: todo en contenedores (sin Node)
 
@@ -47,9 +48,9 @@ cp .env.example .env         # sólo la primera vez
 npm run docker:levantar      # construye la imagen y levanta toda la infraestructura + el servicio
 ```
 
-Equivale a `docker compose up -d --build --wait`; si no tenés Node, podés correr ese comando
-directamente. El servicio queda en http://localhost:3000, igual que con `start:dev`. No uses las
-dos opciones a la vez, porque las dos usan el puerto 3000.
+El script equivale a `docker compose up -d --build --wait`, que puede ejecutarse directamente si
+no se tiene Node instalado. El servicio queda disponible en http://localhost:3000, igual que con
+`start:dev`. Las dos opciones no deben usarse a la vez, porque ambas ocupan el puerto 3000.
 
 ### Comandos útiles
 
@@ -65,41 +66,44 @@ dos opciones a la vez, porque las dos usan el puerto 3000.
 | `npm run db:consola` | Abre `psql` dentro de la base, por ejemplo para `SELECT * FROM viajes;` |
 | `npm run token -- <ROL> [id]` | Genera un token de prueba |
 
-Para trabajar **sin Docker**, poné `PERSISTENCIA=memoria`, `PUBLICADOR_EVENTOS=log` e
-`IDEMPOTENCIA=memoria` en `.env`.
-Los datos se pierden al reiniciar y los eventos se muestran en la terminal.
+Para trabajar **sin Docker** se configuran `PERSISTENCIA=memoria`, `PUBLICADOR_EVENTOS=log` e
+`IDEMPOTENCIA=memoria` en `.env`. En ese modo los datos se pierden al reiniciar y los eventos se
+muestran en la terminal.
 
 ### Ver los eventos en RabbitMQ
 
-Con la infraestructura levantada, abrí la consola de RabbitMQ en el puerto **15672**. En
-Codespaces está en la pestaña *Puertos*. Usuario y clave: `m6` / `m6`.
+Con la infraestructura levantada, la consola de RabbitMQ queda en el puerto **15672** (en
+Codespaces, desde la pestaña *Puertos*). El usuario y la clave son `m6` / `m6`.
 - En **Exchanges** → `movilidad.eventos` se ve cuántos mensajes se publican.
-- Para ver su contenido, creá una cola en **Queues** (por ejemplo `pruebas`) y en
-  **Bindings** enlazala al exchange `movilidad.eventos` con la routing key `viajes.#`.
-- Hacé algo en Swagger (crear un viaje, registrar un arribo) y en la cola usá **Get messages**.
+- Para ver el contenido de los mensajes hay que crear una cola en **Queues** (por ejemplo
+  `pruebas`) y, en **Bindings**, enlazarla al exchange `movilidad.eventos` con la routing key
+  `viajes.#`.
+- Después de una acción en Swagger (crear un viaje, registrar un arribo), los mensajes se leen
+  desde la cola con **Get messages**.
 
 ### Cómo probar la API desde el navegador
 
-1. Con el servicio levantado, abrí la raíz (`http://localhost:3000/`, o la URL del puerto 3000 en
-   Codespaces). Redirige a **`/docs`**, una página Swagger generada desde el contrato OpenAPI.
-2. En otra terminal, generá tokens de prueba (mientras M1 no exista):
+1. Con el servicio levantado, abrir la raíz (`http://localhost:3000/`, o la URL del puerto 3000 en
+   Codespaces). Redirige a **`/docs`**, una página Swagger generada a partir del contrato OpenAPI.
+2. En otra terminal, generar tokens de prueba (mientras M1 no esté disponible):
    ```bash
    npm run token -- SERVICIO m5-despacho      # para crear viajes (simula a M5)
    npm run token -- CONDUCTOR <conductorId>   # el conductor del viaje
    npm run token -- CLIENTE <clienteId>       # el cliente del viaje
    npm run token -- OPERADOR                  # un operador
    ```
-   Sin id, se genera uno al azar y se muestra.
-3. En Swagger, tocá **Authorize** y pegá el token (sin la palabra `Bearer`).
+   Si no se indica un id, el script genera uno al azar y lo muestra.
+3. En Swagger, usar **Authorize** y pegar el token (sin la palabra `Bearer`).
 4. Recorrido sugerido:
-   - Con el token de **SERVICIO**: `POST /viajes` → copiá el `id` de la respuesta, y el
-     `clienteId` y el `conductorId` que usaste.
-   - Con el token del **CONDUCTOR** de ese viaje: `POST /viajes/{id}/arribo`, después
+   - Con el token de **SERVICIO**: `POST /viajes`. De la respuesta se copia el `id`, y se anotan
+     el `clienteId` y el `conductorId` usados.
+   - Con el token del **CONDUCTOR** de ese viaje: `POST /viajes/{id}/arribo`, luego
      `POST /viajes/{id}/inicio` con `{"codigoVerificacion": "QR-<id del viaje>"}` (QR simulado) y
-     `POST /viajes/{id}/finalizacion` con `{"distanciaRecorridaMetros": 4200}`.
-   - `GET /viajes/{id}/historial` para ver todas las transiciones.
-5. Los eventos que en TP2 irán a RabbitMQ aparecen por ahora en la terminal del servicio,
-   con la etiqueta `[Eventos]`.
+     por último `POST /viajes/{id}/finalizacion` con `{"distanciaRecorridaMetros": 4200}`.
+   - `GET /viajes/{id}/historial` muestra todas las transiciones.
+5. Con `PUBLICADOR_EVENTOS=rabbitmq` (el valor de `.env.example`) los eventos se publican en
+   RabbitMQ, como se explica en la sección anterior. Con `PUBLICADOR_EVENTOS=log` aparecen en la
+   terminal del servicio, con la etiqueta `[Eventos]`.
 
 ### Estructura
 
@@ -134,33 +138,34 @@ m6-viajes/
 └── scripts/                           # generar tokens y validar el AsyncAPI
 ```
 
-**Cómo viaja un pedido:** `controlador` (HTTP → datos) → `ViajesService` (lee el viaje, verifica
-`If-Match`, aplica la acción del dominio y guarda el viaje y su evento en la misma transacción) →
-`Viaje` (valida la transición y registra el historial). Aparte, el `RelevadorDeEventos` publica en
-RabbitMQ los eventos guardados en la bandeja de salida.
+**Recorrido de un pedido:** el `controlador` traduce HTTP a datos y llama a `ViajesService`, que
+lee el viaje, verifica `If-Match`, aplica la acción del dominio y guarda el viaje y su evento en la
+misma transacción. La entidad `Viaje` valida la transición y registra el historial. Por separado,
+el `RelevadorDeEventos` publica en RabbitMQ los eventos guardados en la bandeja de salida.
 
 ### Salud y logs
 
-- **`GET /salud`**: responde `{"estado":"OK"}` si el proceso está vivo. Lo usa Docker.
-- **`GET /salud/detalle`**: estado de PostgreSQL, RabbitMQ y Redis, y cuántos eventos esperan
-  publicarse.
-  - `OK`: todo responde.
-  - `DEGRADADO`: falla RabbitMQ o Redis, pero se sigue atendiendo.
+- **`GET /salud`**: responde `{"estado":"OK"}` si el proceso está vivo. Es el que usa Docker.
+- **`GET /salud/detalle`**: informa el estado de PostgreSQL, RabbitMQ y Redis, y cuántos eventos
+  esperan ser publicados.
+  - `OK`: todas las dependencias responden.
+  - `DEGRADADO`: falla RabbitMQ o Redis, pero el servicio sigue atendiendo.
   - `ERROR` (HTTP 503): falla PostgreSQL.
-- **Logs:** con `LOG_FORMATO=json` (el de Docker), cada línea es un JSON con `idCorrelacion`,
-  `viajeId` y `reservaId`, que se puede filtrar. Ejemplo:
+- **Logs:** con `LOG_FORMATO=json` (el que usa Docker), cada línea es un JSON con `idCorrelacion`,
+  `viajeId` y `reservaId`, lo que permite filtrarlas. Por ejemplo:
   ```bash
   npm run docker:logs | grep '"viajeId":"<id>"'
   ```
-  Con `LOG_FORMATO=texto` (el de `.env.example`), los logs son más legibles al programar.
+  Con `LOG_FORMATO=texto` (el de `.env.example`) los logs son más legibles durante el desarrollo.
 
 ### Seguridad
 
-- **Token obligatorio**, con vencimiento (`exp`); `npm run token` genera tokens de 8 horas.
-- **Límite de 120 pedidos por minuto por usuario** (1200 para servicios). Al superarlo se recibe
-  `429` con `Retry-After`. Cada respuesta trae `RateLimit-Remaining`.
-- **Headers de seguridad** (helmet), cuerpos de hasta 16 KB y CORS cerrado salvo `CORS_ORIGENES`.
-- Ver `docs/decisiones/ADR-005-seguridad-web.md`.
+- **Token obligatorio** y con vencimiento (`exp`). `npm run token` genera tokens válidos por 8 horas.
+- **Límite de 120 pedidos por minuto por usuario** (1200 para servicios). Al superarlo se responde
+  `429` con `Retry-After`, y cada respuesta incluye `RateLimit-Remaining`.
+- **Headers de seguridad** (helmet), cuerpos de hasta 16 KB y CORS cerrado salvo para
+  `CORS_ORIGENES`.
+- El detalle está en `docs/decisiones/ADR-005-seguridad-web.md`.
 
 ### Configuración (`.env`)
 
@@ -194,8 +199,8 @@ RabbitMQ los eventos guardados en la bandeja de salida.
 - [ ] Acordar contratos con M5, M7, M8, M1 y el Grupo 12 (ver pendientes en la máquina de estados)
 - [x] Persistencia en PostgreSQL con migraciones, control de versión e historial inmutable
 - [x] Dockerfile (imagen versionada `grupo5/m6-viajes:0.1.0`) y docker-compose con base + servicio
-- [x] Publicación de eventos en RabbitMQ con bandeja de salida (outbox), sin perder eventos si el broker se cae
-- [x] `Idempotency-Key` en Redis: sobrevive reinicios, sirve con varias instancias y detecta pedidos simultáneos
+- [x] Publicación de eventos en RabbitMQ con bandeja de salida (outbox), sin pérdida de eventos si el broker se cae
+- [x] `Idempotency-Key` en Redis: sobrevive a reinicios, funciona con varias instancias y detecta pedidos simultáneos
 - [x] CI en GitHub Actions
 - [x] Salud y diagnóstico: `/salud/detalle` por dependencia y logs JSON con correlación
 - [x] Seguridad web: headers, límite de pedidos, tokens con vencimiento, cuerpos acotados y auditoría de dependencias
