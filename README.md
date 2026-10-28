@@ -16,6 +16,7 @@ finalización, la cancelación y la auditoría.
 | [`docs/m6/maquina-de-estados.md`](docs/m6/maquina-de-estados.md) | Estados, transiciones, reglas de negocio y temas pending de acordar con otros grupos. |
 | [`contratos/m6-viajes.openapi.yaml`](contratos/m6-viajes.openapi.yaml) | Contrato de la API síncrona (OpenAPI 3.1). |
 | [`contratos/eventos/m6-viajes.asyncapi.yaml`](contratos/eventos/m6-viajes.asyncapi.yaml) | Eventos que publica M6 (AsyncAPI 3.0). |
+| [`docs/interfaz-cliente/index.html`](docs/interfaz-cliente/index.html) | Boceto de la pantalla del cliente en cada estado del viaje, con un simulador de los cambios. |
 | [`docs/catalogo-eventos.md`](docs/catalogo-eventos.md) | Versión legible del catálogo de eventos y convenciones propuestas al consorcio. |
 | [`docs/decisiones/`](docs/decisiones) | Registros de decisiones de arquitectura (ADR). |
 | [`m6-viajes/`](m6-viajes) | Servicio en TypeScript y NestJS. |

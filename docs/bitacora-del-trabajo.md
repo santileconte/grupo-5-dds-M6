@@ -825,6 +825,46 @@ como en el Grupo 12.
 
 ---
 
+## Paso 18 – Boceto de la interfaz del cliente
+
+**Qué se hizo:** se agregó `docs/interfaz-cliente/index.html`, un boceto de la pantalla que vería el
+cliente durante su viaje. Muestra la pantalla en cada estado (`PENDING_ARRIVAL`, `DRIVER_ARRIVED`,
+`IN_PROGRESS`, `COMPLETED` y dos casos de `CANCELLED`), la hoja para elegir el motivo de
+cancelación y, al final, un simulador que permite pasar de un estado a otro y ver los cambios.
+
+**Por qué:** la cátedra pidió una interfaz simple que muestre los estados del viaje y sus cambios
+desde el punto de vista del cliente. El boceto usa las mismas reglas que el dominio de M6:
+- El cliente sólo puede cancelar en `PENDING_ARRIVAL` y `DRIVER_ARRIVED`, y sólo con los motivos de
+  `MOTIVOS_POR_ROL` para `CLIENT`. En `IN_PROGRESS` el botón desaparece y se explica el motivo.
+- La cancelación durante el viaje se muestra como hecha por un operador (`OPERATOR`) con
+  `SECURITY_INCIDENT`, que es el único caso permitido desde ese estado.
+
+**Decisiones de diseño:**
+- La pantalla no muestra códigos internos: el cliente ve textos como "Conductor en camino" o
+  "En curso". Los códigos aparecen sólo en las explicaciones, para el grupo.
+- Se usan cuatro colores: azul para lo que está pasando, verde para lo cumplido, y blanco y negro
+  para el resto. Un viaje cancelado se muestra en gris para no confundirlo con uno terminado.
+- Cada cambio de estado muestra un aviso arriba de la pantalla y marca como "Ahora" la última
+  entrada del historial.
+- Hay modo claro y modo oscuro.
+- El conductor, el auto y las direcciones son datos de ejemplo. La página es un solo archivo HTML
+  sin dependencias; sólo carga las tipografías de Google Fonts y, sin conexión, usa las del sistema.
+
+**Cómo probarlo:** abrir el archivo en el navegador. En GitHub Codespaces:
+```bash
+cd docs/interfaz-cliente
+python3 -m http.server 8080
+```
+y abrir el puerto 8080 desde la pestaña **Ports**.
+
+**Cómo se comprobó:**
+- Se abrió la página en Chromium sin errores en la consola. Se revisaron las siete pantallas y el
+  simulador: avance por los cuatro estados, cancelación desde el botón del celular con un motivo
+  elegido y cambio entre modo claro y oscuro.
+- No se modificó código de `m6-viajes/`, por lo que no hizo falta volver a correr los tests.
+
+---
+
 ## Problemas que aparecieron al probar y cómo se resolvieron
 
 | Síntoma | Causa | Solución |
@@ -859,6 +899,7 @@ grupo-5-dds/
 │   ├── acuerdos-con-otros-grupos.md  # propuestas y mensajes para cada grupo
 │   ├── catalogo-eventos.md
 │   ├── m6/maquina-de-estados.md
+│   ├── interfaz-cliente/index.html   # boceto de la pantalla del cliente y simulador de estados
 │   └── decisiones/                   # ADR-001 stack, 002 persistencia, 003 eventos, 004 idempotencia, 005 seguridad
 └── m6-viajes/                        # servicio NestJS
     ├── src/                          # código (dominio, aplicación, infraestructura, http, común)
