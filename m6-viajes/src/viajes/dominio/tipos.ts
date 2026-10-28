@@ -1,85 +1,82 @@
 export enum EstadoViaje {
-  ASIGNADO = 'ASIGNADO',
-  CONDUCTOR_ARRIBADO = 'CONDUCTOR_ARRIBADO',
-  EN_CURSO = 'EN_CURSO',
-  FINALIZADO = 'FINALIZADO',
-  CANCELADO = 'CANCELADO',
+  PENDING_ARRIVAL = 'PENDING_ARRIVAL',
+  DRIVER_ARRIVED = 'DRIVER_ARRIVED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
 }
 
-export const ESTADOS_TERMINALES: readonly EstadoViaje[] = [EstadoViaje.FINALIZADO, EstadoViaje.CANCELADO];
+export const ESTADOS_TERMINALES: readonly EstadoViaje[] = [EstadoViaje.COMPLETED, EstadoViaje.CANCELLED];
 
 export enum AccionViaje {
-  CREAR = 'CREAR',
-  REGISTRAR_ARRIBO = 'REGISTRAR_ARRIBO',
-  INICIAR = 'INICIAR',
-  FINALIZAR = 'FINALIZAR',
-  CANCELAR = 'CANCELAR',
+  CREATE = 'CREATE',
+  REGISTER_ARRIVAL = 'REGISTER_ARRIVAL',
+  START = 'START',
+  COMPLETE = 'COMPLETE',
+  CANCEL = 'CANCEL',
 }
 
 /** Roles definidos por M1 (RF-1.3) más SERVICIO para llamadas entre módulos. */
 export enum Rol {
-  CLIENTE = 'CLIENTE',
-  CONDUCTOR = 'CONDUCTOR',
-  OPERADOR = 'OPERADOR',
-  SERVICIO = 'SERVICIO',
+  CLIENT = 'CLIENT',
+  DRIVER = 'DRIVER',
+  OPERATOR = 'OPERATOR',
+  SYSTEM = 'SYSTEM',
 }
 
 export enum TipoVehiculo {
-  AUTO = 'AUTO',
-  MOTO = 'MOTO',
+  CAR = 'CAR',
+  MOTORCYCLE = 'MOTORCYCLE',
 }
 
 export enum MotivoCancelacion {
   // Cliente
-  CAMBIO_DE_PLANES = 'CAMBIO_DE_PLANES',
-  DEMORA_EXCESIVA = 'DEMORA_EXCESIVA',
-  CONDUCTOR_NO_SE_PRESENTO = 'CONDUCTOR_NO_SE_PRESENTO',
+  CHANGE_OF_PLANS = 'CHANGE_OF_PLANS',
+  EXCESSIVE_DELAY = 'EXCESSIVE_DELAY',
+  DRIVER_NO_SHOW = 'DRIVER_NO_SHOW',
   // Conductor
-  CLIENTE_NO_SE_PRESENTO = 'CLIENTE_NO_SE_PRESENTO',
-  PROBLEMA_CON_VEHICULO = 'PROBLEMA_CON_VEHICULO',
-  ORIGEN_INACCESIBLE = 'ORIGEN_INACCESIBLE',
+  CLIENT_NO_SHOW = 'CLIENT_NO_SHOW',
+  VEHICLE_PROBLEM = 'VEHICLE_PROBLEM',
+  ORIGIN_UNREACHABLE = 'ORIGIN_UNREACHABLE',
   // Operador
-  INCIDENTE_DE_SEGURIDAD = 'INCIDENTE_DE_SEGURIDAD',
-  BLOQUEO_ADMINISTRATIVO = 'BLOQUEO_ADMINISTRATIVO',
+  SECURITY_INCIDENT = 'SECURITY_INCIDENT',
+  ADMINISTRATIVE_BLOCK = 'ADMINISTRATIVE_BLOCK',
   // Cualquiera
-  OTRO = 'OTRO',
+  OTHER = 'OTHER',
 }
 
 /** Quién ejecuta una acción. El id es el del usuario (M1) o el del módulo si es SERVICIO. */
 export interface Actor {
-  rol: Rol;
+  role: Rol;
   id: string;
-}
-
-export interface Ubicacion {
-  latitud: number;
-  longitud: number;
-  direccion?: string;
 }
 
 /** Registro inmutable del historial (RF-6.8). */
 export interface TransicionViaje {
-  readonly secuencia: number;
-  readonly desde: EstadoViaje | null;
-  readonly hacia: EstadoViaje;
-  readonly accion: AccionViaje;
+  readonly sequence: number;
+  readonly from: EstadoViaje | null;
+  readonly to: EstadoViaje;
+  readonly action: AccionViaje;
   readonly actor: Readonly<Actor>;
-  readonly ocurridoEn: Date;
-  readonly motivo?: MotivoCancelacion;
-  readonly detalle?: string;
+  readonly occurredAt: Date;
+  readonly reason?: MotivoCancelacion;
+  readonly detail?: string;
 }
 
 export interface DatosCancelacion {
-  canceladoPor: Rol;
+  cancelledBy: Rol;
   actorId: string;
-  motivo: MotivoCancelacion;
-  detalle?: string;
-  estadoAlCancelar: EstadoViaje;
-  requiereRedespacho: boolean;
+  reason: MotivoCancelacion;
+  detail?: string;
+  previousState: EstadoViaje;
+  requiresRedispatch: boolean;
 }
 
 export interface DatosCierre {
-  distanciaRecorridaMetros: number;
-  duracionSegundos: number;
-  ubicacionFinal?: Ubicacion;
+  /** Kilómetros recorridos (decimal). */
+  distanceKm: number;
+  durationSeconds: number;
+  /** Posición donde terminó el viaje, si el conductor la informó. */
+  finalLatitude?: number;
+  finalLongitude?: number;
 }

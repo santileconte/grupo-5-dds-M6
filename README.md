@@ -13,7 +13,7 @@ finalización, la cancelación y la auditoría.
 |---|---|
 | [`docs/bitacora-del-trabajo.md`](docs/bitacora-del-trabajo.md) | Registro paso a paso del trabajo realizado y de los problemas encontrados al probar. |
 | [`docs/acuerdos-con-otros-grupos.md`](docs/acuerdos-con-otros-grupos.md) | Propuestas de integración y mensajes preparados para cada grupo, con su seguimiento. |
-| [`docs/m6/maquina-de-estados.md`](docs/m6/maquina-de-estados.md) | Estados, transiciones, reglas de negocio y temas pendientes de acordar con otros grupos. |
+| [`docs/m6/maquina-de-estados.md`](docs/m6/maquina-de-estados.md) | Estados, transiciones, reglas de negocio y temas pending de acordar con otros grupos. |
 | [`contratos/m6-viajes.openapi.yaml`](contratos/m6-viajes.openapi.yaml) | Contrato de la API síncrona (OpenAPI 3.1). |
 | [`contratos/eventos/m6-viajes.asyncapi.yaml`](contratos/eventos/m6-viajes.asyncapi.yaml) | Eventos que publica M6 (AsyncAPI 3.0). |
 | [`docs/catalogo-eventos.md`](docs/catalogo-eventos.md) | Versión legible del catálogo de eventos y convenciones propuestas al consorcio. |
@@ -37,7 +37,7 @@ npm run infra:levantar       # levanta PostgreSQL, RabbitMQ y Redis en Docker (q
 npm run start:dev            # levanta el servicio en http://localhost:3000
 ```
 
-Al arrancar, el servicio aplica las migraciones pendientes de `migraciones/` y crea las tablas que
+Al arrancar, el servicio aplica las migraciones pending de `migraciones/` y crea las tablas que
 falten. Los datos se conservan aunque se reinicie el servicio o el Codespace.
 
 ### Opción B: todo en contenedores (sin Node)
@@ -87,20 +87,20 @@ Codespaces, desde la pestaña *Puertos*). El usuario y la clave son `m6` / `m6`.
    Codespaces). Redirige a **`/docs`**, una página Swagger generada a partir del contrato OpenAPI.
 2. En otra terminal, generar tokens de prueba (mientras M1 no esté disponible):
    ```bash
-   npm run token -- SERVICIO m5-despacho      # para crear viajes (simula a M5)
-   npm run token -- CONDUCTOR <conductorId>   # el conductor del viaje
-   npm run token -- CLIENTE <clienteId>       # el cliente del viaje
-   npm run token -- OPERADOR                  # un operador
+   npm run token -- SYSTEM m5-despacho      # para crear viajes (simula a M5)
+   npm run token -- DRIVER <driverId>   # el conductor del viaje
+   npm run token -- CLIENT <clientId>       # el cliente del viaje
+   npm run token -- OPERATOR                  # un operador
    ```
    Si no se indica un id, el script genera uno al azar y lo muestra.
 3. En Swagger, usar **Authorize** y pegar el token (sin la palabra `Bearer`).
 4. Recorrido sugerido:
-   - Con el token de **SERVICIO**: `POST /viajes`. De la respuesta se copia el `id`, y se anotan
-     el `clienteId` y el `conductorId` usados.
-   - Con el token del **CONDUCTOR** de ese viaje: `POST /viajes/{id}/arribo`, luego
-     `POST /viajes/{id}/inicio` con `{"codigoVerificacion": "QR-<id del viaje>"}` (QR simulado) y
-     por último `POST /viajes/{id}/finalizacion` con `{"distanciaRecorridaMetros": 4200}`.
-   - `GET /viajes/{id}/historial` muestra todas las transiciones.
+   - Con el token de **SYSTEM**: `POST /trips`. De la respuesta se copia el `id`, y se anotan
+     el `clientId` y el `driverId` usados.
+   - Con el token del **DRIVER** de ese viaje: `POST /trips/{id}/arrived`, luego
+     `POST /trips/{id}/start` con `{"verificationToken": "QR-<id del viaje>"}` (QR simulado) y
+     por último `POST /trips/{id}/complete` con `{"distanceKm": 4.2}`.
+   - `GET /trips/{id}/history` muestra todas las transiciones.
 5. Con `PUBLICADOR_EVENTOS=rabbitmq` (el valor de `.env.example`) los eventos se publican en
    RabbitMQ, como se explica en la sección anterior. Con `PUBLICADOR_EVENTOS=log` aparecen en la
    terminal del servicio, con la etiqueta `[Eventos]`.
@@ -112,13 +112,13 @@ m6-viajes/
 ├── src/
 │   ├── main.ts / app.module.ts        # arranque y armado de NestJS
 │   ├── configuracion.ts               # validación de variables de entorno
-│   ├── salud/                         # GET /salud, /salud/detalle y redirección de / a /docs
+│   ├── salud/                         # GET /health, /health/details y redirección de / a /docs
 │   ├── comun/                         # lo transversal a toda la API
 │   │   ├── autenticacion.guard.ts     # verifica el JWT y obtiene id y rol
 │   │   ├── correlacion.middleware.ts  # X-Correlation-Id
 │   │   ├── problemas.filter.ts        # convierte errores en problem+json
 │   │   ├── idempotencia/              # Idempotency-Key: interceptor y almacén (Redis o memoria)
-│   │   ├── registro/                  # logs JSON y contexto del pedido (idCorrelacion, viajeId)
+│   │   ├── registro/                  # logs JSON y contexto del pedido (correlationId, tripId)
 │   │   ├── limite/                    # límite de pedidos por usuario
 │   │   ├── redis/                     # conexión a Redis compartida
 │   │   ├── seguridad.ts               # helmet, tamaño máximo del cuerpo y CORS
@@ -145,16 +145,16 @@ el `RelevadorDeEventos` publica en RabbitMQ los eventos guardados en la bandeja 
 
 ### Salud y logs
 
-- **`GET /salud`**: responde `{"estado":"OK"}` si el proceso está vivo. Es el que usa Docker.
-- **`GET /salud/detalle`**: informa el estado de PostgreSQL, RabbitMQ y Redis, y cuántos eventos
+- **`GET /health`**: responde `{"estado":"OK"}` si el proceso está vivo. Es el que usa Docker.
+- **`GET /health/details`**: informa el estado de PostgreSQL, RabbitMQ y Redis, y cuántos eventos
   esperan ser publicados.
   - `OK`: todas las dependencias responden.
-  - `DEGRADADO`: falla RabbitMQ o Redis, pero el servicio sigue atendiendo.
+  - `DEGRADED`: falla RabbitMQ o Redis, pero el servicio sigue atendiendo.
   - `ERROR` (HTTP 503): falla PostgreSQL.
-- **Logs:** con `LOG_FORMATO=json` (el que usa Docker), cada línea es un JSON con `idCorrelacion`,
-  `viajeId` y `reservaId`, lo que permite filtrarlas. Por ejemplo:
+- **Logs:** con `LOG_FORMATO=json` (el que usa Docker), cada línea es un JSON con `correlationId`,
+  `tripId` y `reservationId`, lo que permite filtrarlas. Por ejemplo:
   ```bash
-  npm run docker:logs | grep '"viajeId":"<id>"'
+  npm run docker:logs | grep '"tripId":"<id>"'
   ```
   Con `LOG_FORMATO=texto` (el de `.env.example`) los logs son más legibles durante el desarrollo.
 
@@ -183,10 +183,10 @@ el `RelevadorDeEventos` publica en RabbitMQ los eventos guardados en la bandeja 
 | `LIMITE_PEDIDOS_SERVICIO_POR_MINUTO` | Ídem para servicios (M5, M2) | `1200` |
 | `CORS_ORIGENES` | Orígenes web permitidos, separados por coma | (ninguno) |
 | `JWT_EMISOR` / `JWT_AUDIENCIA` | Si se definen, se exigen en el token | — |
-| `OUTBOX_INTERVALO_MS` | Cada cuánto se publican los eventos pendientes (0 = nunca) | `1000` |
+| `OUTBOX_INTERVALO_MS` | Cada cuánto se publican los eventos pending (0 = nunca) | `1000` |
 | `JWT_SECRETO` | Secreto para verificar los JWT (obligatorio, ≥ 16 caracteres) | — |
-| `ESPERA_MINIMA_ARRIBO_MINUTOS` | Espera antes de cancelar por `CLIENTE_NO_SE_PRESENTO` | `5` |
-| `VALIDADOR_QR` | `simulado` (código `QR-<viajeId>`) o `m8` | `simulado` |
+| `ESPERA_MINIMA_ARRIBO_MINUTOS` | Espera antes de cancelar por `CLIENT_NO_SHOW` | `5` |
+| `VALIDADOR_QR` | `simulado` (código `QR-<tripId>`) o `m8` | `simulado` |
 | `M8_URL`, `M8_TIMEOUT_MS` | URL de M8 y timeout en ms, si `VALIDADOR_QR=m8` | —, `2000` |
 
 ## Estado
@@ -196,11 +196,11 @@ el `RelevadorDeEventos` publica en RabbitMQ los eventos guardados en la bandeja 
 - [x] Catálogo de eventos (AsyncAPI)
 - [x] Controladores HTTP de todos los endpoints del contrato, con autenticación JWT, errores
       problem+json, `ETag`/`If-Match`, `Idempotency-Key` y tests de integración
-- [ ] Acordar contratos con M5, M7, M8, M1 y el Grupo 12 (ver pendientes en la máquina de estados)
+- [ ] Acordar contratos con M5, M7, M8, M1 y el Grupo 12 (ver pending en la máquina de estados)
 - [x] Persistencia en PostgreSQL con migraciones, control de versión e historial inmutable
 - [x] Dockerfile (imagen versionada `grupo5/m6-viajes:0.1.0`) y docker-compose con base + servicio
 - [x] Publicación de eventos en RabbitMQ con bandeja de salida (outbox), sin pérdida de eventos si el broker se cae
 - [x] `Idempotency-Key` en Redis: sobrevive a reinicios, funciona con varias instancias y detecta pedidos simultáneos
 - [x] CI en GitHub Actions
-- [x] Salud y diagnóstico: `/salud/detalle` por dependencia y logs JSON con correlación
+- [x] Salud y diagnóstico: `/health/details` por dependencia y logs JSON con correlación
 - [x] Seguridad web: headers, límite de pedidos, tokens con vencimiento, cuerpos acotados y auditoría de dependencias

@@ -7,63 +7,63 @@ import { AccionViaje, EstadoViaje, MotivoCancelacion, Rol } from './tipos';
  * Ver docs/m6/maquina-de-estados.md.
  */
 interface ReglaTransicion {
-  accion: AccionViaje;
-  desde: readonly EstadoViaje[];
-  hacia: EstadoViaje;
+  action: AccionViaje;
+  from: readonly EstadoViaje[];
+  to: EstadoViaje;
   roles: readonly Rol[];
 }
 
 export const TRANSICIONES: readonly ReglaTransicion[] = [
   {
-    accion: AccionViaje.REGISTRAR_ARRIBO,
-    desde: [EstadoViaje.ASIGNADO],
-    hacia: EstadoViaje.CONDUCTOR_ARRIBADO,
-    roles: [Rol.CONDUCTOR],
+    action: AccionViaje.REGISTER_ARRIVAL,
+    from: [EstadoViaje.PENDING_ARRIVAL],
+    to: EstadoViaje.DRIVER_ARRIVED,
+    roles: [Rol.DRIVER],
   },
   {
-    accion: AccionViaje.INICIAR,
-    desde: [EstadoViaje.CONDUCTOR_ARRIBADO],
-    hacia: EstadoViaje.EN_CURSO,
-    roles: [Rol.CONDUCTOR],
+    action: AccionViaje.START,
+    from: [EstadoViaje.DRIVER_ARRIVED],
+    to: EstadoViaje.IN_PROGRESS,
+    roles: [Rol.DRIVER],
   },
   {
-    accion: AccionViaje.FINALIZAR,
-    desde: [EstadoViaje.EN_CURSO],
-    hacia: EstadoViaje.FINALIZADO,
-    roles: [Rol.CONDUCTOR],
+    action: AccionViaje.COMPLETE,
+    from: [EstadoViaje.IN_PROGRESS],
+    to: EstadoViaje.COMPLETED,
+    roles: [Rol.DRIVER],
   },
   {
-    accion: AccionViaje.CANCELAR,
-    desde: [EstadoViaje.ASIGNADO, EstadoViaje.CONDUCTOR_ARRIBADO],
-    hacia: EstadoViaje.CANCELADO,
-    roles: [Rol.CLIENTE, Rol.CONDUCTOR],
+    action: AccionViaje.CANCEL,
+    from: [EstadoViaje.PENDING_ARRIVAL, EstadoViaje.DRIVER_ARRIVED],
+    to: EstadoViaje.CANCELLED,
+    roles: [Rol.CLIENT, Rol.DRIVER],
   },
   {
-    accion: AccionViaje.CANCELAR,
-    desde: [EstadoViaje.ASIGNADO, EstadoViaje.CONDUCTOR_ARRIBADO, EstadoViaje.EN_CURSO],
-    hacia: EstadoViaje.CANCELADO,
-    roles: [Rol.OPERADOR],
+    action: AccionViaje.CANCEL,
+    from: [EstadoViaje.PENDING_ARRIVAL, EstadoViaje.DRIVER_ARRIVED, EstadoViaje.IN_PROGRESS],
+    to: EstadoViaje.CANCELLED,
+    roles: [Rol.OPERATOR],
   },
 ];
 
 /** Motivos de cancelación que puede usar cada rol (regla R6-03). */
 export const MOTIVOS_POR_ROL: Readonly<Partial<Record<Rol, readonly MotivoCancelacion[]>>> = {
-  [Rol.CLIENTE]: [
-    MotivoCancelacion.CAMBIO_DE_PLANES,
-    MotivoCancelacion.DEMORA_EXCESIVA,
-    MotivoCancelacion.CONDUCTOR_NO_SE_PRESENTO,
-    MotivoCancelacion.OTRO,
+  [Rol.CLIENT]: [
+    MotivoCancelacion.CHANGE_OF_PLANS,
+    MotivoCancelacion.EXCESSIVE_DELAY,
+    MotivoCancelacion.DRIVER_NO_SHOW,
+    MotivoCancelacion.OTHER,
   ],
-  [Rol.CONDUCTOR]: [
-    MotivoCancelacion.CLIENTE_NO_SE_PRESENTO,
-    MotivoCancelacion.PROBLEMA_CON_VEHICULO,
-    MotivoCancelacion.ORIGEN_INACCESIBLE,
-    MotivoCancelacion.OTRO,
+  [Rol.DRIVER]: [
+    MotivoCancelacion.CLIENT_NO_SHOW,
+    MotivoCancelacion.VEHICLE_PROBLEM,
+    MotivoCancelacion.ORIGIN_UNREACHABLE,
+    MotivoCancelacion.OTHER,
   ],
-  [Rol.OPERADOR]: [
-    MotivoCancelacion.INCIDENTE_DE_SEGURIDAD,
-    MotivoCancelacion.BLOQUEO_ADMINISTRATIVO,
-    MotivoCancelacion.OTRO,
+  [Rol.OPERATOR]: [
+    MotivoCancelacion.SECURITY_INCIDENT,
+    MotivoCancelacion.ADMINISTRATIVE_BLOCK,
+    MotivoCancelacion.OTHER,
   ],
 };
 
@@ -72,14 +72,14 @@ export const MOTIVOS_POR_ROL: Readonly<Partial<Record<Rol, readonly MotivoCancel
  * Lanza AccionNoPermitidaError si el rol nunca puede ejecutar esa acción y
  * TransicionInvalidaError si el rol podría, pero no en este estado.
  */
-export function resolverTransicion(estado: EstadoViaje, accion: AccionViaje, rol: Rol): EstadoViaje {
-  const reglasDelRol = TRANSICIONES.filter((r) => r.accion === accion && r.roles.includes(rol));
+export function resolverTransicion(state: EstadoViaje, action: AccionViaje, role: Rol): EstadoViaje {
+  const reglasDelRol = TRANSICIONES.filter((r) => r.action === action && r.roles.includes(role));
   if (reglasDelRol.length === 0) {
-    throw new AccionNoPermitidaError(rol, accion, 'el rol no tiene permitida esta acción');
+    throw new AccionNoPermitidaError(role, action, 'el rol no tiene permitida esta acción');
   }
-  const regla = reglasDelRol.find((r) => r.desde.includes(estado));
+  const regla = reglasDelRol.find((r) => r.from.includes(state));
   if (!regla) {
-    throw new TransicionInvalidaError(estado, accion);
+    throw new TransicionInvalidaError(state, action);
   }
-  return regla.hacia;
+  return regla.to;
 }

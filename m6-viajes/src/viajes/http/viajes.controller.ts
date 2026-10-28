@@ -12,7 +12,7 @@ import { resumenAJson, transicionAJson, viajeAJson } from './presentacion';
  * Endpoints de contratos/m6-viajes.openapi.yaml.
  * El controlador sólo traduce HTTP ⇄ casos de uso; las reglas viven en el dominio y el servicio.
  */
-@Controller('viajes')
+@Controller('trips')
 export class ViajesController {
   constructor(private readonly viajes: ViajesService) {}
 
@@ -20,86 +20,86 @@ export class ViajesController {
   async crear(@Body() cuerpo: CrearViajeDto, @Ctx() ctx: Contexto, @Res({ passthrough: true }) res: Response) {
     const { viaje, creado } = await this.viajes.crear(cuerpo, ctx);
     res.status(creado ? 201 : 200);
-    if (creado) res.setHeader('Location', `/viajes/${viaje.id}`);
+    if (creado) res.setHeader('Location', `/trips/${viaje.id}`);
     return this.responder(viaje, res);
   }
 
   @Get()
   async listar(@Query() q: ListarViajesQuery, @Ctx() ctx: Contexto) {
     const filtros = {
-      clienteId: q.clienteId,
-      conductorId: q.conductorId,
-      estados: q.estado,
-      desde: q.desde ? new Date(q.desde) : undefined,
-      hasta: q.hasta ? new Date(q.hasta) : undefined,
-      pagina: q.pagina,
-      tamanio: q.tamanio,
+      clientId: q.clientId,
+      driverId: q.driverId,
+      states: q.state,
+      from: q.from ? new Date(q.from) : undefined,
+      to: q.to ? new Date(q.to) : undefined,
+      page: q.page,
+      pageSize: q.pageSize,
     };
     const { items, total } = await this.viajes.listar(filtros, ctx);
-    return { items: items.map(resumenAJson), pagina: q.pagina, tamanio: q.tamanio, total };
+    return { items: items.map(resumenAJson), page: q.page, pageSize: q.pageSize, total };
   }
 
-  @Get(':viajeId')
-  async obtener(@Param('viajeId') viajeId: string, @Ctx() ctx: Contexto, @Res({ passthrough: true }) res: Response) {
-    return this.responder(await this.viajes.obtener(viajeId, ctx), res);
+  @Get(':tripId')
+  async obtener(@Param('tripId') tripId: string, @Ctx() ctx: Contexto, @Res({ passthrough: true }) res: Response) {
+    return this.responder(await this.viajes.obtener(tripId, ctx), res);
   }
 
-  @Get(':viajeId/historial')
-  async historial(@Param('viajeId') viajeId: string, @Ctx() ctx: Contexto) {
-    const transiciones = await this.viajes.historial(viajeId, ctx);
-    return { viajeId, transiciones: transiciones.map(transicionAJson) };
+  @Get(':tripId/history')
+  async history(@Param('tripId') tripId: string, @Ctx() ctx: Contexto) {
+    const transitions = await this.viajes.history(tripId, ctx);
+    return { tripId, transitions: transitions.map(transicionAJson) };
   }
 
-  @Post(':viajeId/arribo')
+  @Post(':tripId/arrived')
   @HttpCode(200)
   @UseInterceptors(IdempotenciaInterceptor)
   async registrarArribo(
-    @Param('viajeId') viajeId: string,
+    @Param('tripId') tripId: string,
     @Headers('if-match') ifMatch: string | undefined,
     @Ctx() ctx: Contexto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    return this.responder(await this.viajes.registrarArribo(viajeId, versionDeIfMatch(ifMatch), ctx), res);
+    return this.responder(await this.viajes.registrarArribo(tripId, versionDeIfMatch(ifMatch), ctx), res);
   }
 
-  @Post(':viajeId/inicio')
+  @Post(':tripId/start')
   @HttpCode(200)
   @UseInterceptors(IdempotenciaInterceptor)
   async iniciar(
-    @Param('viajeId') viajeId: string,
+    @Param('tripId') tripId: string,
     @Body() cuerpo: IniciarViajeDto,
     @Headers('if-match') ifMatch: string | undefined,
     @Ctx() ctx: Contexto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const viaje = await this.viajes.iniciar(viajeId, cuerpo.codigoVerificacion, versionDeIfMatch(ifMatch), ctx);
+    const viaje = await this.viajes.iniciar(tripId, cuerpo.verificationToken, versionDeIfMatch(ifMatch), ctx);
     return this.responder(viaje, res);
   }
 
-  @Post(':viajeId/finalizacion')
+  @Post(':tripId/complete')
   @HttpCode(200)
   @UseInterceptors(IdempotenciaInterceptor)
   async finalizar(
-    @Param('viajeId') viajeId: string,
+    @Param('tripId') tripId: string,
     @Body() cuerpo: FinalizarViajeDto,
     @Headers('if-match') ifMatch: string | undefined,
     @Ctx() ctx: Contexto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    return this.responder(await this.viajes.finalizar(viajeId, cuerpo, versionDeIfMatch(ifMatch), ctx), res);
+    return this.responder(await this.viajes.finalizar(tripId, cuerpo, versionDeIfMatch(ifMatch), ctx), res);
   }
 
-  @Post(':viajeId/cancelacion')
+  @Post(':tripId/cancel')
   @HttpCode(200)
   @UseInterceptors(IdempotenciaInterceptor)
   async cancelar(
-    @Param('viajeId') viajeId: string,
+    @Param('tripId') tripId: string,
     @Body() cuerpo: CancelarViajeDto,
     @Headers('if-match') ifMatch: string | undefined,
     @Ctx() ctx: Contexto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    return this.responder(await this.viajes.cancelar(viajeId, cuerpo, versionDeIfMatch(ifMatch), ctx), res);
+    return this.responder(await this.viajes.cancelar(tripId, cuerpo, versionDeIfMatch(ifMatch), ctx), res);
   }
 
   /** Devuelve el viaje con su versión en el header ETag. */
@@ -116,7 +116,7 @@ export function versionDeIfMatch(ifMatch: string | undefined): number | undefine
   }
   const version = Number(ifMatch.trim().replace(/^W\//, '').replace(/"/g, ''));
   if (!Number.isInteger(version) || version < 1) {
-    throw new ValidacionError([{ campo: 'If-Match', mensaje: 'debe ser la versión del viaje, por ejemplo "3"' }]);
+    throw new ValidacionError([{ field: 'If-Match', message: 'debe ser la versión del viaje, por ejemplo "3"' }]);
   }
   return version;
 }

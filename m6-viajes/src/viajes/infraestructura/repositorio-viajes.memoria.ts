@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { ESTADOS_TERMINALES } from '../dominio/tipos';
 import { Viaje, ViajeProps } from '../dominio/viaje';
 import { ConflictoConcurrenciaError, ViajeNoEncontradoError } from '../aplicacion/errores';
 import { SobreEvento } from '../aplicacion/eventos';
@@ -29,38 +28,31 @@ export class RepositorioViajesEnMemoria implements RepositorioViajes, BandejaDeS
     return props ? Viaje.reconstituir(props) : null;
   }
 
-  async buscarPorAsignacion(asignacionId: string): Promise<Viaje | null> {
-    const props = [...this.viajes.values()].find((v) => v.asignacionId === asignacionId);
-    return props ? Viaje.reconstituir(props) : null;
-  }
-
-  async buscarActivoPorSolicitud(solicitudId: string): Promise<Viaje | null> {
-    const props = [...this.viajes.values()].find(
-      (v) => v.solicitudId === solicitudId && !ESTADOS_TERMINALES.includes(v.estado),
-    );
+  async buscarPorSolicitud(requestId: string): Promise<Viaje | null> {
+    const props = [...this.viajes.values()].find((v) => v.requestId === requestId);
     return props ? Viaje.reconstituir(props) : null;
   }
 
   async listar(f: FiltrosViajes): Promise<PaginaDeViajes> {
     const filtrados = [...this.viajes.values()]
-      .filter((v) => !f.clienteId || v.clienteId === f.clienteId)
-      .filter((v) => !f.conductorId || v.conductorId === f.conductorId)
-      .filter((v) => !f.estados?.length || f.estados.includes(v.estado))
-      .filter((v) => !f.desde || v.creadoEn >= f.desde)
-      .filter((v) => !f.hasta || v.creadoEn < f.hasta)
-      .sort((a, b) => b.creadoEn.getTime() - a.creadoEn.getTime() || a.id.localeCompare(b.id));
+      .filter((v) => !f.clientId || v.clientId === f.clientId)
+      .filter((v) => !f.driverId || v.driverId === f.driverId)
+      .filter((v) => !f.states?.length || f.states.includes(v.state))
+      .filter((v) => !f.from || v.createdAt >= f.from)
+      .filter((v) => !f.to || v.createdAt < f.to)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || a.id.localeCompare(b.id));
 
-    const inicio = (f.pagina - 1) * f.tamanio;
+    const inicio = (f.page - 1) * f.pageSize;
     return {
-      items: filtrados.slice(inicio, inicio + f.tamanio).map((p) => Viaje.reconstituir(p)),
+      items: filtrados.slice(inicio, inicio + f.pageSize).map((p) => Viaje.reconstituir(p)),
       total: filtrados.length,
     };
   }
 
   async insertar(viaje: Viaje, eventos: SobreEvento[]): Promise<Viaje> {
     const props = viaje.toProps();
-    // En PostgreSQL esto lo garantiza un índice único sobre asignacion_id.
-    const existente = await this.buscarPorAsignacion(props.asignacionId);
+    // En PostgreSQL esto lo garantiza un índice único sobre solicitud_id.
+    const existente = await this.buscarPorSolicitud(props.requestId);
     if (existente) {
       return existente;
     }
@@ -99,6 +91,6 @@ export class RepositorioViajesEnMemoria implements RepositorioViajes, BandejaDeS
 
   async resumenPendientes(): Promise<ResumenPendientes> {
     const primero = this.pendientes[0];
-    return { cantidad: this.pendientes.length, masAntiguo: primero ? new Date(primero.ocurridoEn) : null };
+    return { cantidad: this.pendientes.length, masAntiguo: primero ? new Date(primero.occurredAt) : null };
   }
 }

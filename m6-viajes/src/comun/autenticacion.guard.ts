@@ -9,7 +9,7 @@ import { ES_PUBLICO } from './publico.decorator';
 /** Claims que esperamos en el JWT emitido por M1 (a confirmar con el Grupo de M1). */
 interface ClaimsToken {
   sub?: unknown;
-  rol?: unknown;
+  role?: unknown;
   exp?: unknown;
 }
 
@@ -63,15 +63,15 @@ export class AutenticacionGuard implements CanActivate {
     } catch {
       throw new NoAutenticadoError('El token es inválido o venció');
     }
-    if (typeof claims.sub !== 'string' || typeof claims.rol !== 'string' || !ROLES_VALIDOS.has(claims.rol)) {
-      throw new NoAutenticadoError('El token no tiene los claims sub y rol esperados');
+    if (typeof claims.sub !== 'string' || typeof claims.role !== 'string' || !ROLES_VALIDOS.has(claims.role)) {
+      throw new NoAutenticadoError('El token no tiene los claims sub y role esperados');
     }
     // Un token sin vencimiento serviría para siempre si alguien lo roba (RNF-12).
     if (typeof claims.exp !== 'number') {
       throw new NoAutenticadoError('El token debe tener vencimiento (claim exp)');
     }
 
-    pedido.actor = { id: claims.sub, rol: claims.rol as Rol };
+    pedido.actor = { id: claims.sub, role: claims.role as Rol };
     return true;
   }
 }

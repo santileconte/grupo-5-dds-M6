@@ -6,9 +6,9 @@ import { AsyncLocalStorage } from 'node:async_hooks';
  * de un mismo pedido se pueden encontrar por su idCorrelacion, viajeId o reservaId (RNF-14).
  */
 export interface ContextoPedido {
-  idCorrelacion: string;
-  viajeId?: string;
-  reservaId?: string;
+  correlationId: string;
+  tripId?: string;
+  reservationId?: string;
 }
 
 const almacenamiento = new AsyncLocalStorage<ContextoPedido>();

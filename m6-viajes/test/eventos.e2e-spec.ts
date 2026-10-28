@@ -19,16 +19,17 @@ function nuevoViaje() {
   return Viaje.crear(
     {
       id: randomUUID(),
-      solicitudId: randomUUID(),
-      asignacionId: randomUUID(),
-      clienteId: randomUUID(),
-      conductorId: randomUUID(),
-      vehiculoId: randomUUID(),
-      tipoVehiculo: TipoVehiculo.AUTO,
-      origen: { latitud: -34.6, longitud: -58.38 },
-      destino: { latitud: -34.58, longitud: -58.39 },
+      requestId: randomUUID(),
+      clientId: randomUUID(),
+      driverId: randomUUID(),
+      vehicleId: randomUUID(),
+      vehicleType: TipoVehiculo.CAR,
+      originLatitude: -34.6,
+      originLongitude: -58.38,
+      destinationLatitude: -34.58,
+      destinationLongitude: -58.39,
     },
-    { rol: Rol.SERVICIO, id: 'm5-despacho' },
+    { role: Rol.SYSTEM, id: 'm5-despacho' },
     new Date(),
   );
 }
@@ -57,16 +58,16 @@ describe('PublicadorEventosRabbitMQ sin broker', () => {
       const evento = eventoDeUltimaTransicion(nuevoViaje(), 'corr-rabbit');
       await publicador.publicar(evento, 'viajes.viaje.creado');
 
-      const mensaje = await esperarMensaje(canal, queue);
-      expect(mensaje.fields.routingKey).toBe('viajes.viaje.creado');
-      expect(mensaje.properties).toMatchObject({
-        messageId: evento.idEvento,
+      const message = await esperarMensaje(canal, queue);
+      expect(message.fields.routingKey).toBe('viajes.viaje.creado');
+      expect(message.properties).toMatchObject({
+        messageId: evento.eventId,
         correlationId: 'corr-rabbit',
-        type: 'ViajeCreado',
+        type: 'TripCreated',
         contentType: 'application/json',
         deliveryMode: 2,
       });
-      expect(JSON.parse(mensaje.content.toString()) as SobreEvento).toEqual(evento);
+      expect(JSON.parse(message.content.toString()) as SobreEvento).toEqual(evento);
     } finally {
       await publicador.onApplicationShutdown();
       await conexion.close();
@@ -89,18 +90,18 @@ describe('PublicadorEventosRabbitMQ sin broker', () => {
   afterAll(() => pool.end());
 
   const pendientes = async () =>
-    (await pool.query('SELECT tipo, intentos FROM eventos_salientes WHERE publicado_en IS NULL ORDER BY secuencia')).rows;
+    (await pool.query('SELECT tipo, intentos FROM eventos_salientes WHERE publicado_en IS NULL ORDER BY sequence')).rows;
 
   it('guarda el evento en la misma transacción que el viaje', async () => {
     const viaje = nuevoViaje();
     await repo.insertar(viaje, [eventoDeUltimaTransicion(viaje, 'c')]);
-    expect(await pendientes()).toEqual([{ tipo: 'ViajeCreado', intentos: 0 }]);
+    expect(await pendientes()).toEqual([{ eventType: 'TripCreated', intentos: 0 }]);
   });
 
   it('si el cambio no se guarda por conflicto de versión, el evento tampoco', async () => {
     const viaje = nuevoViaje();
     await repo.insertar(viaje, [eventoDeUltimaTransicion(viaje, 'c')]);
-    viaje.cancelar({ rol: Rol.OPERADOR, id: 'op' }, { motivo: 'OTRO' as never }, new Date());
+    viaje.cancelar({ role: Rol.OPERATOR, id: 'op' }, { reason: 'OTHER' as never }, new Date());
     await expect(repo.actualizar(viaje, 99, [eventoDeUltimaTransicion(viaje, 'c')])).rejects.toThrow();
     expect(await pendientes()).toHaveLength(1);
   });
@@ -108,7 +109,7 @@ describe('PublicadorEventosRabbitMQ sin broker', () => {
   it('publica en orden, se detiene ante un fallo y lo reintenta después', async () => {
     const viaje = nuevoViaje();
     await repo.insertar(viaje, [eventoDeUltimaTransicion(viaje, 'c')]);
-    viaje.registrarArribo({ rol: Rol.CONDUCTOR, id: viaje.toProps().conductorId }, new Date());
+    viaje.registrarArribo({ role: Rol.DRIVER, id: viaje.toProps().driverId }, new Date());
     await repo.actualizar(viaje, 1, [eventoDeUltimaTransicion(viaje, 'c')]);
 
     const fallido = await bandeja.procesarPendientes(10, async () => {
@@ -116,16 +117,16 @@ describe('PublicadorEventosRabbitMQ sin broker', () => {
     });
     expect(fallido.publicados).toBe(0);
     expect(await pendientes()).toEqual([
-      { tipo: 'ViajeCreado', intentos: 1 },
-      { tipo: 'ConductorArribado', intentos: 0 },
+      { eventType: 'TripCreated', intentos: 1 },
+      { eventType: 'DriverArrived', intentos: 0 },
     ]);
 
     const publicados: string[] = [];
     const exitoso = await bandeja.procesarPendientes(10, async (e) => {
-      publicados.push(e.tipo);
+      publicados.push(e.eventType);
     });
     expect(exitoso).toEqual({ publicados: 2 });
-    expect(publicados).toEqual(['ViajeCreado', 'ConductorArribado']);
+    expect(publicados).toEqual(['TripCreated', 'DriverArrived']);
     expect(await pendientes()).toEqual([]);
   });
 
@@ -136,7 +137,7 @@ describe('PublicadorEventosRabbitMQ sin broker', () => {
     }
     const vistos: string[] = [];
     const lento = async (e: SobreEvento) => {
-      vistos.push(e.idEvento);
+      vistos.push(e.eventId);
       await new Promise((r) => setTimeout(r, 30));
     };
     await Promise.all([bandeja.procesarPendientes(2, lento), bandeja.procesarPendientes(2, lento)]);
@@ -148,10 +149,10 @@ describe('PublicadorEventosRabbitMQ sin broker', () => {
 function esperarMensaje(canal: import('amqplib').Channel, cola: string) {
   return new Promise<import('amqplib').ConsumeMessage>((resolver, rechazar) => {
     const limite = setTimeout(() => rechazar(new Error('No llegó el mensaje')), 5000);
-    void canal.consume(cola, (mensaje) => {
-      if (mensaje) {
+    void canal.consume(cola, (message) => {
+      if (message) {
         clearTimeout(limite);
-        resolver(mensaje);
+        resolver(message);
       }
     });
   });

@@ -1,6 +1,6 @@
 # Excepciones puntuales al linter de contratos.
 contratos/m6-viajes.openapi.yaml:
   operation-4xx-response:
-    # /salud no recibe datos del cliente, no tiene errores 4XX posibles.
-    - '#/paths/~1salud/get/responses'
-    - '#/paths/~1salud~1detalle/get/responses'
+    # /health no recibe datos del cliente, no tiene errores 4XX posibles.
+    - '#/paths/~1health/get/responses'
+    - '#/paths/~1health~1details/get/responses'

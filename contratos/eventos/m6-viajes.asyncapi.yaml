@@ -8,19 +8,19 @@ info:
 
     **Convenciones**
     - Broker: RabbitMQ (RNF-10, TP2). Exchange `movilidad.eventos`, de tipo `topic` y durable.
-    - Routing key: `<modulo>.<entidad>.<hecho-en-pasado>`, por ejemplo `viajes.viaje.finalizado`.
+    - Routing key: `<modulo>.<entidad>.<hecho-en-pasado>`, por ejemplo `trips.trip.completed`.
       Cada consumidor crea su propia cola y la enlaza con las routing keys que le interesan
-      (por ejemplo `viajes.#`).
-    - Todos los mensajes usan el mismo sobre (`SobreEvento`). Los datos propios del evento van en `datos`.
-    - Propiedades AMQP de cada mensaje: `message_id` = `idEvento`, `correlation_id` = `idCorrelacion`,
-      `type` = `tipo`, `content_type` = `application/json`, `delivery_mode` = 2 (persistente).
+      (por ejemplo `trips.#`).
+    - Todos los mensajes usan el mismo sobre (`SobreEvento`). Los datos propios del evento van en `payload`.
+    - Propiedades AMQP de cada mensaje: `message_id` = `eventId`, `correlation_id` = `correlationId`,
+      `type` = `eventType`, `content_type` = `application/json`, `delivery_mode` = 2 (persistente).
     - Entrega **al menos una vez**: un evento puede llegar repetido. Los consumidores deben
-      descartar duplicados por `idEvento` (RNF-09).
-    - Orden: sólo se garantiza por viaje. Si llega un evento de un viaje con `versionViaje`
+      descartar duplicados por `eventId` (RNF-09).
+    - Orden: sólo se garantiza por viaje. Si llega un evento de un viaje con `tripVersion`
       menor o igual a la última procesada, se puede ignorar.
     - Privacidad (RNF-19, RF-4.7): los eventos no llevan coordenadas, direcciones, datos personales
-      ni el código QR. Quien necesite más datos consulta `GET /viajes/{viajeId}` con sus permisos.
-    - Versionado: un cambio incompatible incrementa `version` y se publica en paralelo con la versión
+      ni el código QR. Quien necesite más datos consulta `GET /trips/{tripId}` con sus permisos.
+    - Versionado: un cambio incompatible incrementa `eventVersion` y se publica en paralelo con la versión
       anterior durante la transición.
 defaultContentType: application/json
 
@@ -31,93 +31,93 @@ servers:
     description: RabbitMQ local (docker compose del equipo integrador).
 
 channels:
-  viajeCreado:
-    address: viajes.viaje.creado
-    title: Viaje creado
+  tripCreated:
+    address: trips.trip.created
+    title: Trip created
     messages:
-      ViajeCreado:
-        $ref: '#/components/messages/ViajeCreado'
+      TripCreated:
+        $ref: '#/components/messages/TripCreated'
     bindings:
       $ref: '#/components/channelBindings/exchangeMovilidad'
-  conductorArribado:
-    address: viajes.conductor.arribado
-    title: Conductor arribado
+  driverArrived:
+    address: trips.driver.arrived
+    title: Driver arrived
     messages:
-      ConductorArribado:
-        $ref: '#/components/messages/ConductorArribado'
+      DriverArrived:
+        $ref: '#/components/messages/DriverArrived'
     bindings:
       $ref: '#/components/channelBindings/exchangeMovilidad'
-  viajeIniciado:
-    address: viajes.viaje.iniciado
-    title: Viaje iniciado
+  tripStarted:
+    address: trips.trip.started
+    title: Trip started
     messages:
-      ViajeIniciado:
-        $ref: '#/components/messages/ViajeIniciado'
+      TripStarted:
+        $ref: '#/components/messages/TripStarted'
     bindings:
       $ref: '#/components/channelBindings/exchangeMovilidad'
-  viajeFinalizado:
-    address: viajes.viaje.finalizado
-    title: Viaje finalizado
+  tripCompleted:
+    address: trips.trip.completed
+    title: Trip completed
     messages:
-      ViajeFinalizado:
-        $ref: '#/components/messages/ViajeFinalizado'
+      TripCompleted:
+        $ref: '#/components/messages/TripCompleted'
     bindings:
       $ref: '#/components/channelBindings/exchangeMovilidad'
-  viajeCancelado:
-    address: viajes.viaje.cancelado
-    title: Viaje cancelado
+  tripCancelled:
+    address: trips.trip.cancelled
+    title: Trip cancelled
     messages:
-      ViajeCancelado:
-        $ref: '#/components/messages/ViajeCancelado'
+      TripCancelled:
+        $ref: '#/components/messages/TripCancelled'
     bindings:
       $ref: '#/components/channelBindings/exchangeMovilidad'
 
 operations:
-  publicarViajeCreado:
+  publishTripCreated:
     action: send
     bindings:
       $ref: '#/components/operationBindings/publicacionPersistente'
     channel:
-      $ref: '#/channels/viajeCreado'
-    summary: Se publica al crear el viaje (estado ASIGNADO).
+      $ref: '#/channels/tripCreated'
+    summary: Se publica al crear el viaje (estado PENDING_ARRIVAL).
     messages:
-      - $ref: '#/channels/viajeCreado/messages/ViajeCreado'
-  publicarConductorArribado:
+      - $ref: '#/channels/tripCreated/messages/TripCreated'
+  publishDriverArrived:
     action: send
     bindings:
       $ref: '#/components/operationBindings/publicacionPersistente'
     channel:
-      $ref: '#/channels/conductorArribado'
+      $ref: '#/channels/driverArrived'
     summary: Se publica cuando el conductor registra el arribo.
     messages:
-      - $ref: '#/channels/conductorArribado/messages/ConductorArribado'
-  publicarViajeIniciado:
+      - $ref: '#/channels/driverArrived/messages/DriverArrived'
+  publishTripStarted:
     action: send
     bindings:
       $ref: '#/components/operationBindings/publicacionPersistente'
     channel:
-      $ref: '#/channels/viajeIniciado'
-    summary: Se publica cuando el viaje pasa a EN_CURSO.
+      $ref: '#/channels/tripStarted'
+    summary: Se publica cuando el viaje pasa a IN_PROGRESS.
     messages:
-      - $ref: '#/channels/viajeIniciado/messages/ViajeIniciado'
-  publicarViajeFinalizado:
+      - $ref: '#/channels/tripStarted/messages/TripStarted'
+  publishTripCompleted:
     action: send
     bindings:
       $ref: '#/components/operationBindings/publicacionPersistente'
     channel:
-      $ref: '#/channels/viajeFinalizado'
-    summary: Se publica cuando el viaje pasa a FINALIZADO.
+      $ref: '#/channels/tripCompleted'
+    summary: Se publica cuando el viaje pasa a COMPLETED.
     messages:
-      - $ref: '#/channels/viajeFinalizado/messages/ViajeFinalizado'
-  publicarViajeCancelado:
+      - $ref: '#/channels/tripCompleted/messages/TripCompleted'
+  publishTripCancelled:
     action: send
     bindings:
       $ref: '#/components/operationBindings/publicacionPersistente'
     channel:
-      $ref: '#/channels/viajeCancelado'
-    summary: Se publica cuando el viaje pasa a CANCELADO.
+      $ref: '#/channels/tripCancelled'
+    summary: Se publica cuando el viaje pasa a CANCELLED.
     messages:
-      - $ref: '#/channels/viajeCancelado/messages/ViajeCancelado'
+      - $ref: '#/channels/tripCancelled/messages/TripCancelled'
 
 components:
   channelBindings:
@@ -140,87 +140,87 @@ components:
         bindingVersion: 0.3.0
 
   messages:
-    ViajeCreado:
-      name: ViajeCreado
-      title: Viaje creado
+    TripCreated:
+      name: TripCreated
+      title: Trip created
       summary: Un conductor quedó asignado y el viaje comenzó su ciclo de vida.
       description: |
         **Consumidores sugeridos:**
         - M8: notificar la asignación al cliente (RF-8.1) y generar el QR de un solo uso (RF-8.3).
-        - M9: vincular la reserva con el viaje, si `reservaId` no es nulo.
+        - M9: vincular la reserva con el viaje, si `reservationId` no es nulo.
       correlationId:
-        $ref: '#/components/correlationIds/porViaje'
+        $ref: '#/components/correlationIds/byTrip'
       payload:
         allOf:
-          - $ref: '#/components/schemas/SobreEvento'
+          - $ref: '#/components/schemas/EventEnvelope'
           - type: object
             properties:
-              tipo:
-                const: ViajeCreado
-              datos:
-                $ref: '#/components/schemas/DatosViajeCreado'
+              eventType:
+                const: TripCreated
+              payload:
+                $ref: '#/components/schemas/TripCreatedPayload'
       examples:
-        - name: viajeCreado
+        - name: tripCreated
           payload:
-            idEvento: 2d5e1f0a-3b4c-4d5e-8f6a-7b8c9d0e1f2a
-            tipo: ViajeCreado
-            version: 1
-            ocurridoEn: '2026-10-08T12:00:00Z'
-            productor: m6-viajes
-            idCorrelacion: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
-            datos:
-              viajeId: 7b0e3a8e-4f7c-4d1a-9a52-1f0c2f9d6b11
-              versionViaje: 1
-              solicitudId: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
-              reservaId: null
-              clienteId: 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
-              conductorId: 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
-              vehiculoId: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5e
-              tipoVehiculo: AUTO
-              creadoEn: '2026-10-08T12:00:00Z'
+            eventId: 2d5e1f0a-3b4c-4d5e-8f6a-7b8c9d0e1f2a
+            eventType: TripCreated
+            eventVersion: 1
+            occurredAt: '2026-10-08T12:00:00Z'
+            producer: m6-viajes
+            correlationId: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
+            payload:
+              tripId: 7b0e3a8e-4f7c-4d1a-9a52-1f0c2f9d6b11
+              tripVersion: 1
+              requestId: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
+              reservationId: null
+              clientId: 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+              driverId: 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+              vehicleId: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5e
+              vehicleType: CAR
+              createdAt: '2026-10-08T12:00:00Z'
 
-    ConductorArribado:
-      name: ConductorArribado
-      title: Conductor arribado
+    DriverArrived:
+      name: DriverArrived
+      title: Driver arrived
       summary: El conductor llegó al punto de retiro.
       description: |
         **Consumidores sugeridos:**
         - M8: avisar al cliente que el conductor llegó (RF-8.1).
       correlationId:
-        $ref: '#/components/correlationIds/porViaje'
+        $ref: '#/components/correlationIds/byTrip'
       payload:
         allOf:
-          - $ref: '#/components/schemas/SobreEvento'
+          - $ref: '#/components/schemas/EventEnvelope'
           - type: object
             properties:
-              tipo:
-                const: ConductorArribado
-              datos:
-                $ref: '#/components/schemas/DatosConductorArribado'
+              eventType:
+                const: DriverArrived
+              payload:
+                $ref: '#/components/schemas/DriverArrivedPayload'
 
-    ViajeIniciado:
-      name: ViajeIniciado
-      title: Viaje iniciado
+    TripStarted:
+      name: TripStarted
+      title: Trip started
       summary: Se validó el QR y el viaje está en curso.
       description: |
         **Consumidores sugeridos:**
         - M8: notificar el inicio (RF-8.1).
         - M7: autorizar el pago, si la regla acordada lo hace al inicio (RF-7.3).
       correlationId:
-        $ref: '#/components/correlationIds/porViaje'
+        $ref: '#/components/correlationIds/byTrip'
       payload:
         allOf:
-          - $ref: '#/components/schemas/SobreEvento'
+          - $ref: '#/components/schemas/EventEnvelope'
           - type: object
             properties:
-              tipo:
-                const: ViajeIniciado
-              datos:
-                $ref: '#/components/schemas/DatosViajeIniciado'
+              eventType:
+                const: TripStarted
+              payload:
+                $ref: '#/components/schemas/TripStartedPayload'
 
-    ViajeFinalizado:
-      name: ViajeFinalizado
-      title: Viaje finalizado
+    TripCompleted:
+      name: TripCompleted
+      title: Trip completed
       summary: El conductor cerró el viaje con distancia y duración.
       description: |
         **Consumidores sugeridos:**
@@ -230,274 +230,276 @@ components:
         - M4: liberar la disponibilidad del conductor (RF-4.4).
         - M9: cerrar la reserva vinculada, si existe.
       correlationId:
-        $ref: '#/components/correlationIds/porViaje'
+        $ref: '#/components/correlationIds/byTrip'
       payload:
         allOf:
-          - $ref: '#/components/schemas/SobreEvento'
+          - $ref: '#/components/schemas/EventEnvelope'
           - type: object
             properties:
-              tipo:
-                const: ViajeFinalizado
-              datos:
-                $ref: '#/components/schemas/DatosViajeFinalizado'
+              eventType:
+                const: TripCompleted
+              payload:
+                $ref: '#/components/schemas/TripCompletedPayload'
       examples:
-        - name: viajeFinalizado
+        - name: tripCompleted
           payload:
-            idEvento: 6f7a8b9c-0d1e-4f2a-8b3c-4d5e6f7a8b9c
-            tipo: ViajeFinalizado
-            version: 1
-            ocurridoEn: '2026-10-08T12:22:00Z'
-            productor: m6-viajes
-            idCorrelacion: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
-            datos:
-              viajeId: 7b0e3a8e-4f7c-4d1a-9a52-1f0c2f9d6b11
-              versionViaje: 4
-              solicitudId: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
-              reservaId: null
-              clienteId: 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
-              conductorId: 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
-              tipoVehiculo: AUTO
-              iniciadoEn: '2026-10-08T12:07:00Z'
-              finalizadoEn: '2026-10-08T12:22:00Z'
-              distanciaRecorridaMetros: 4200
-              duracionSegundos: 900
+            eventId: 6f7a8b9c-0d1e-4f2a-8b3c-4d5e6f7a8b9c
+            eventType: TripCompleted
+            eventVersion: 1
+            occurredAt: '2026-10-08T12:22:00Z'
+            producer: m6-viajes
+            correlationId: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
+            payload:
+              tripId: 7b0e3a8e-4f7c-4d1a-9a52-1f0c2f9d6b11
+              tripVersion: 4
+              requestId: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
+              reservationId: null
+              clientId: 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+              driverId: 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+              vehicleType: CAR
+              startedAt: '2026-10-08T12:07:00Z'
+              completedAt: '2026-10-08T12:22:00Z'
+              distanceKm: 4.2
+              durationSeconds: 900
 
-    ViajeCancelado:
-      name: ViajeCancelado
-      title: Viaje cancelado
+    TripCancelled:
+      name: TripCancelled
+      title: Trip cancelled
       summary: El viaje se canceló, con motivo y actor.
       description: |
         **Consumidores sugeridos:**
-        - M5: si `requiereRedespacho` es verdadero, volver a buscar conductor para la solicitud (RF-6.7).
+        - M5: si `requiresRedispatch` es verdadero, volver a buscar conductor para la solicitud (RF-6.7).
         - M7: decidir y registrar el cargo de cancelación, o el reintegro (RF-7.4, RF-7.5).
         - M8: notificar la cancelación (RF-8.1).
         - M4: liberar la disponibilidad del conductor (RF-4.4).
         - M9: actualizar la reserva vinculada, si existe.
       correlationId:
-        $ref: '#/components/correlationIds/porViaje'
+        $ref: '#/components/correlationIds/byTrip'
       payload:
         allOf:
-          - $ref: '#/components/schemas/SobreEvento'
+          - $ref: '#/components/schemas/EventEnvelope'
           - type: object
             properties:
-              tipo:
-                const: ViajeCancelado
-              datos:
-                $ref: '#/components/schemas/DatosViajeCancelado'
+              eventType:
+                const: TripCancelled
+              payload:
+                $ref: '#/components/schemas/TripCancelledPayload'
       examples:
-        - name: canceladoPorConductor
+        - name: cancelledByDriver
           summary: El conductor cancela antes del arribo; la solicitud vuelve a despacho.
           payload:
-            idEvento: 9c8b7a6f-5e4d-4c3b-8a29-1f0e9d8c7b6a
-            tipo: ViajeCancelado
-            version: 1
-            ocurridoEn: '2026-10-08T12:03:00Z'
-            productor: m6-viajes
-            idCorrelacion: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
-            datos:
-              viajeId: 7b0e3a8e-4f7c-4d1a-9a52-1f0c2f9d6b11
-              versionViaje: 2
-              solicitudId: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
-              reservaId: null
-              clienteId: 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
-              conductorId: 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
-              tipoVehiculo: AUTO
-              canceladoPor: CONDUCTOR
-              motivo: PROBLEMA_CON_VEHICULO
-              estadoAlCancelar: ASIGNADO
-              requiereRedespacho: true
-              creadoEn: '2026-10-08T12:00:00Z'
-              arriboEn: null
-              iniciadoEn: null
-              canceladoEn: '2026-10-08T12:03:00Z'
+            eventId: 9c8b7a6f-5e4d-4c3b-8a29-1f0e9d8c7b6a
+            eventType: TripCancelled
+            eventVersion: 1
+            occurredAt: '2026-10-08T12:03:00Z'
+            producer: m6-viajes
+            correlationId: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
+            payload:
+              tripId: 7b0e3a8e-4f7c-4d1a-9a52-1f0c2f9d6b11
+              tripVersion: 2
+              requestId: 0c6a4f0e-8f43-4d3b-a3b7-6a1f2c8e9d10
+              reservationId: null
+              clientId: 3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+              driverId: 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+              vehicleType: CAR
+              cancelledBy: DRIVER
+              reason: VEHICLE_PROBLEM
+              previousState: PENDING_ARRIVAL
+              requiresRedispatch: true
+              createdAt: '2026-10-08T12:00:00Z'
+              arrivedAt: null
+              startedAt: null
+              cancelledAt: '2026-10-08T12:03:00Z'
 
   correlationIds:
-    porViaje:
+    byTrip:
       description: Identificador de correlación de punta a punta (normalmente el de la solicitud o la reserva).
-      location: $message.payload#/idCorrelacion
+      location: $message.payload#/correlationId
 
   schemas:
-    SobreEvento:
+    EventEnvelope:
       type: object
       description: Sobre común a todos los eventos del consorcio.
-      required: [idEvento, tipo, version, ocurridoEn, productor, idCorrelacion, datos]
+      required: [eventId, eventType, eventVersion, occurredAt, producer, correlationId, payload]
       properties:
-        idEvento:
+        eventId:
           type: string
           format: uuid
           description: Único por evento. Se usa para descartar duplicados.
-        tipo:
+        eventType:
           type: string
           description: Nombre del evento, en PascalCase.
-        version:
+        eventVersion:
           type: integer
           minimum: 1
-          description: Versión del esquema de `datos`.
-        ocurridoEn:
+          description: Versión del esquema de `payload`.
+        occurredAt:
           type: string
           format: date-time
-        productor:
+        producer:
           type: string
           description: Módulo que publica el evento.
           examples: [m6-viajes]
-        idCorrelacion:
+        correlationId:
           type: string
           description: Se propaga desde el header `X-Correlation-Id` (RNF-14).
-        datos:
+        payload:
           type: object
 
-    TipoVehiculo:
+    VehicleType:
       type: string
-      enum: [AUTO, MOTO]
+      enum: [CAR, MOTORCYCLE]
 
-    EstadoViaje:
+    TripState:
       type: string
-      enum: [ASIGNADO, CONDUCTOR_ARRIBADO, EN_CURSO, FINALIZADO, CANCELADO]
+      enum: [PENDING_ARRIVAL, DRIVER_ARRIVED, IN_PROGRESS, COMPLETED, CANCELLED]
 
-    Rol:
+    Role:
       type: string
-      enum: [CLIENTE, CONDUCTOR, OPERADOR]
+      enum: [CLIENT, DRIVER, OPERATOR]
 
-    MotivoCancelacion:
+    CancellationReason:
       type: string
       enum:
-        - CAMBIO_DE_PLANES
-        - DEMORA_EXCESIVA
-        - CONDUCTOR_NO_SE_PRESENTO
-        - CLIENTE_NO_SE_PRESENTO
-        - PROBLEMA_CON_VEHICULO
-        - ORIGEN_INACCESIBLE
-        - INCIDENTE_DE_SEGURIDAD
-        - BLOQUEO_ADMINISTRATIVO
-        - OTRO
+        - CHANGE_OF_PLANS
+        - EXCESSIVE_DELAY
+        - DRIVER_NO_SHOW
+        - CLIENT_NO_SHOW
+        - VEHICLE_PROBLEM
+        - ORIGIN_UNREACHABLE
+        - SECURITY_INCIDENT
+        - ADMINISTRATIVE_BLOCK
+        - OTHER
 
-    IdNullable:
+    NullableId:
       oneOf:
         - type: string
           format: uuid
         - type: 'null'
 
-    FechaNullable:
+    NullableDateTime:
       oneOf:
         - type: string
           format: date-time
         - type: 'null'
 
-    DatosBaseViaje:
+    TripPayloadBase:
       type: object
-      required: [viajeId, versionViaje, solicitudId, reservaId, clienteId, conductorId]
+      required: [tripId, tripVersion, requestId, reservationId, clientId, driverId]
       properties:
-        viajeId:
+        tripId:
           type: string
           format: uuid
-        versionViaje:
+        tripVersion:
           type: integer
           minimum: 1
           description: Versión del viaje luego de la transición. Sirve para ordenar e ignorar eventos viejos.
-        solicitudId:
+        requestId:
           type: string
           format: uuid
-        reservaId:
-          $ref: '#/components/schemas/IdNullable'
-        clienteId:
+        reservationId:
+          $ref: '#/components/schemas/NullableId'
+        clientId:
           type: string
           format: uuid
-        conductorId:
+        driverId:
           type: string
           format: uuid
 
-    DatosViajeCreado:
+    TripCreatedPayload:
       allOf:
-        - $ref: '#/components/schemas/DatosBaseViaje'
+        - $ref: '#/components/schemas/TripPayloadBase'
         - type: object
-          required: [vehiculoId, tipoVehiculo, creadoEn]
+          required: [vehicleId, vehicleType, createdAt]
           properties:
-            vehiculoId:
+            vehicleId:
               type: string
               format: uuid
-            tipoVehiculo:
-              $ref: '#/components/schemas/TipoVehiculo'
-            creadoEn:
+            vehicleType:
+              $ref: '#/components/schemas/VehicleType'
+            createdAt:
               type: string
               format: date-time
 
-    DatosConductorArribado:
+    DriverArrivedPayload:
       allOf:
-        - $ref: '#/components/schemas/DatosBaseViaje'
+        - $ref: '#/components/schemas/TripPayloadBase'
         - type: object
-          required: [arriboEn]
+          required: [arrivedAt]
           properties:
-            arriboEn:
+            arrivedAt:
               type: string
               format: date-time
 
-    DatosViajeIniciado:
+    TripStartedPayload:
       allOf:
-        - $ref: '#/components/schemas/DatosBaseViaje'
+        - $ref: '#/components/schemas/TripPayloadBase'
         - type: object
-          required: [tipoVehiculo, iniciadoEn]
+          required: [vehicleType, startedAt]
           properties:
-            tipoVehiculo:
-              $ref: '#/components/schemas/TipoVehiculo'
-            iniciadoEn:
+            vehicleType:
+              $ref: '#/components/schemas/VehicleType'
+            startedAt:
               type: string
               format: date-time
 
-    DatosViajeFinalizado:
+    TripCompletedPayload:
       allOf:
-        - $ref: '#/components/schemas/DatosBaseViaje'
+        - $ref: '#/components/schemas/TripPayloadBase'
         - type: object
-          required: [tipoVehiculo, iniciadoEn, finalizadoEn, distanciaRecorridaMetros, duracionSegundos]
+          required: [vehicleType, startedAt, completedAt, distanceKm, durationSeconds]
           properties:
-            tipoVehiculo:
-              $ref: '#/components/schemas/TipoVehiculo'
-            iniciadoEn:
+            vehicleType:
+              $ref: '#/components/schemas/VehicleType'
+            startedAt:
               type: string
               format: date-time
-            finalizadoEn:
+            completedAt:
               type: string
               format: date-time
-            distanciaRecorridaMetros:
+            distanceKm:
+              type: number
+              format: float
+              minimum: 0
+              description: Kilómetros recorridos, con decimales.
+            durationSeconds:
               type: integer
               minimum: 0
-            duracionSegundos:
-              type: integer
-              minimum: 0
 
-    DatosViajeCancelado:
+    TripCancelledPayload:
       allOf:
-        - $ref: '#/components/schemas/DatosBaseViaje'
+        - $ref: '#/components/schemas/TripPayloadBase'
         - type: object
           required:
-            - tipoVehiculo
-            - canceladoPor
-            - motivo
-            - estadoAlCancelar
-            - requiereRedespacho
-            - creadoEn
-            - arriboEn
-            - iniciadoEn
-            - canceladoEn
+            - vehicleType
+            - cancelledBy
+            - reason
+            - previousState
+            - requiresRedispatch
+            - createdAt
+            - arrivedAt
+            - startedAt
+            - cancelledAt
           properties:
-            tipoVehiculo:
-              $ref: '#/components/schemas/TipoVehiculo'
-            canceladoPor:
-              $ref: '#/components/schemas/Rol'
-            motivo:
-              $ref: '#/components/schemas/MotivoCancelacion'
-            estadoAlCancelar:
-              $ref: '#/components/schemas/EstadoViaje'
-            requiereRedespacho:
+            vehicleType:
+              $ref: '#/components/schemas/VehicleType'
+            cancelledBy:
+              $ref: '#/components/schemas/Role'
+            reason:
+              $ref: '#/components/schemas/CancellationReason'
+            previousState:
+              $ref: '#/components/schemas/TripState'
+            requiresRedispatch:
               type: boolean
               description: Verdadero si M5 debe volver a buscar conductor para la solicitud.
-            creadoEn:
+            createdAt:
               type: string
               format: date-time
               description: Momento de la asignación. Junto con los demás instantes, le permite a M7 calcular el cargo.
-            arriboEn:
-              $ref: '#/components/schemas/FechaNullable'
-            iniciadoEn:
-              $ref: '#/components/schemas/FechaNullable'
-            canceladoEn:
+            arrivedAt:
+              $ref: '#/components/schemas/NullableDateTime'
+            startedAt:
+              $ref: '#/components/schemas/NullableDateTime'
+            cancelledAt:
               type: string
               format: date-time

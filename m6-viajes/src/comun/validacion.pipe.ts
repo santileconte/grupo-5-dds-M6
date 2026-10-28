@@ -2,11 +2,11 @@ import { ValidationError, ValidationPipe } from '@nestjs/common';
 import { ErrorDeCampo, ValidacionError } from './errores-http';
 
 /** Aplana los errores de class-validator (incluidos los de objetos anidados) a { campo, mensaje }. */
-function aplanar(errores: ValidationError[], prefijo = ''): ErrorDeCampo[] {
-  return errores.flatMap((e) => {
-    const campo = prefijo ? `${prefijo}.${e.property}` : e.property;
-    const propios = Object.values(e.constraints ?? {}).map((mensaje) => ({ campo, mensaje }));
-    return [...propios, ...aplanar(e.children ?? [], campo)];
+function aplanar(errors: ValidationError[], prefijo = ''): ErrorDeCampo[] {
+  return errors.flatMap((e) => {
+    const field = prefijo ? `${prefijo}.${e.property}` : e.property;
+    const propios = Object.values(e.constraints ?? {}).map((message) => ({ field, message }));
+    return [...propios, ...aplanar(e.children ?? [], field)];
   });
 }
 
@@ -16,5 +16,5 @@ export const crearValidacionPipe = () =>
     whitelist: true,
     forbidNonWhitelisted: true,
     transform: true,
-    exceptionFactory: (errores) => new ValidacionError(aplanar(errores)),
+    exceptionFactory: (errors) => new ValidacionError(aplanar(errors)),
   });

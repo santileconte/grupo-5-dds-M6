@@ -19,119 +19,126 @@ import { EstadoViaje, MotivoCancelacion, TipoVehiculo } from '../dominio/tipos';
 // Los DTOs describen lo que llega por HTTP y se validan automáticamente (ver comun/validacion.pipe.ts).
 // Deben coincidir con los schemas de contratos/m6-viajes.openapi.yaml.
 
-export class UbicacionDto {
+export class CrearViajeDto {
+  @IsUUID()
+  requestId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  reservationId?: string | null;
+
+  @IsUUID()
+  clientId!: string;
+
+  @IsUUID()
+  driverId!: string;
+
+  @IsUUID()
+  vehicleId!: string;
+
+  @IsEnum(TipoVehiculo)
+  vehicleType!: TipoVehiculo;
+
   @IsNumber()
   @Min(-90)
   @Max(90)
-  latitud!: number;
+  originLatitude!: number;
 
   @IsNumber()
   @Min(-180)
   @Max(180)
-  longitud!: number;
+  originLongitude!: number;
+
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  destinationLatitude!: number;
+
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  destinationLongitude!: number;
 
   @IsOptional()
   @IsString()
   @MaxLength(300)
-  direccion?: string;
-}
-
-export class CrearViajeDto {
-  @IsUUID()
-  solicitudId!: string;
-
-  @IsUUID()
-  asignacionId!: string;
+  originAddress?: string;
 
   @IsOptional()
-  @IsUUID()
-  reservaId?: string | null;
-
-  @IsUUID()
-  clienteId!: string;
-
-  @IsUUID()
-  conductorId!: string;
-
-  @IsUUID()
-  vehiculoId!: string;
-
-  @IsEnum(TipoVehiculo)
-  tipoVehiculo!: TipoVehiculo;
-
-  @IsObject()
-  @ValidateNested()
-  @Type(() => UbicacionDto)
-  origen!: UbicacionDto;
-
-  @IsObject()
-  @ValidateNested()
-  @Type(() => UbicacionDto)
-  destino!: UbicacionDto;
+  @IsString()
+  @MaxLength(300)
+  destinationAddress?: string;
 }
 
 export class IniciarViajeDto {
   @IsString()
   @MinLength(1)
   @MaxLength(200)
-  codigoVerificacion!: string;
+  verificationToken!: string;
 }
 
 export class FinalizarViajeDto {
-  @IsInt()
-  @Min(0)
-  distanciaRecorridaMetros!: number;
+  /** Kilómetros recorridos, con decimales (por ejemplo 6.4). */
+  @IsNumber()
+  @Min(0.1)
+  distanceKm!: number;
 
   @IsOptional()
-  @IsObject()
-  @ValidateNested()
-  @Type(() => UbicacionDto)
-  ubicacionFinal?: UbicacionDto;
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  finalLatitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  finalLongitude?: number;
 }
 
 export class CancelarViajeDto {
   @IsEnum(MotivoCancelacion)
-  motivo!: MotivoCancelacion;
+  reason!: MotivoCancelacion;
 
   @IsOptional()
   @IsString()
   @MaxLength(500)
-  detalle?: string;
+  detail?: string;
 }
 
 export class ListarViajesQuery {
   @IsOptional()
   @IsUUID()
-  clienteId?: string;
+  clientId?: string;
 
   @IsOptional()
   @IsUUID()
-  conductorId?: string;
+  driverId?: string;
 
-  /** Llega como `estado=ASIGNADO,EN_CURSO`. */
+  /** Llega como `state=PENDING_ARRIVAL,IN_PROGRESS`. */
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? value.split(',').filter(Boolean) : value))
   @IsEnum(EstadoViaje, { each: true })
-  estado?: EstadoViaje[];
+  state?: EstadoViaje[];
 
   @IsOptional()
   @IsISO8601({ strict: true })
-  desde?: string;
+  from?: string;
 
   @IsOptional()
   @IsISO8601({ strict: true })
-  hasta?: string;
+  to?: string;
 
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  pagina: number = 1;
+  page: number = 1;
 
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100)
-  tamanio: number = 20;
+  pageSize: number = 20;
 }

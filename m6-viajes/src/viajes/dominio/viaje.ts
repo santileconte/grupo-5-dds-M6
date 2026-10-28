@@ -10,10 +10,11 @@ import {
   Rol,
   TipoVehiculo,
   TransicionViaje,
-  Ubicacion,
 } from './tipos';
 
 const LARGO_MAXIMO_DETALLE = 500;
+/** Mismo mínimo que el contrato del Grupo 12: un viaje de 0 km no es un viaje. */
+export const DISTANCIA_MINIMA_KM = 0.1;
 
 export interface ConfiguracionViaje {
   /** Minutos que el conductor debe esperar tras el arribo antes de cancelar por CLIENTE_NO_SE_PRESENTO (R6-04). */
@@ -25,39 +26,46 @@ export const CONFIGURACION_POR_DEFECTO: ConfiguracionViaje = { esperaMinimaArrib
 /** Datos que M5 envía al crear el viaje. */
 export interface DatosNuevoViaje {
   id: string;
-  solicitudId: string;
-  asignacionId: string;
-  reservaId?: string | null;
-  clienteId: string;
-  conductorId: string;
-  vehiculoId: string;
-  tipoVehiculo: TipoVehiculo;
-  origen: Ubicacion;
-  destino: Ubicacion;
+  /** Id de la solicitud de M5. Es la clave de idempotencia de la creación (igual que en el Grupo 12). */
+  requestId: string;
+  reservationId?: string | null;
+  clientId: string;
+  driverId: string;
+  vehicleId: string;
+  vehicleType: TipoVehiculo;
+  /** Coordenadas decimales (grados), como campos sueltos de tipo double. */
+  originLatitude: number;
+  originLongitude: number;
+  destinationLatitude: number;
+  destinationLongitude: number;
+  originAddress?: string;
+  destinationAddress?: string;
 }
 
 /** Foto completa del viaje, usada para persistir y reconstruir la entidad. */
 export interface ViajeProps extends DatosNuevoViaje {
-  estado: EstadoViaje;
+  state: EstadoViaje;
   version: number;
-  historial: TransicionViaje[];
-  creadoEn: Date;
-  arriboEn: Date | null;
-  iniciadoEn: Date | null;
-  finalizadoEn: Date | null;
-  canceladoEn: Date | null;
-  cierre: DatosCierre | null;
-  cancelacion: DatosCancelacion | null;
+  history: TransicionViaje[];
+  createdAt: Date;
+  arrivedAt: Date | null;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  cancelledAt: Date | null;
+  closure: DatosCierre | null;
+  cancellation: DatosCancelacion | null;
 }
 
 export interface DatosFinalizacion {
-  distanciaRecorridaMetros: number;
-  ubicacionFinal?: Ubicacion;
+  /** Kilómetros recorridos (decimal). */
+  distanceKm: number;
+  finalLatitude?: number;
+  finalLongitude?: number;
 }
 
 export interface SolicitudCancelacion {
-  motivo: MotivoCancelacion;
-  detalle?: string;
+  reason: MotivoCancelacion;
+  detail?: string;
 }
 
 /**
@@ -68,38 +76,38 @@ export class Viaje {
   private constructor(private props: ViajeProps) {}
 
   static crear(datos: DatosNuevoViaje, actor: Actor, ahora: Date): Viaje {
-    if (actor.rol !== Rol.SERVICIO) {
-      throw new AccionNoPermitidaError(actor.rol, AccionViaje.CREAR, 'sólo M5 (servicio) crea viajes');
+    if (actor.role !== Rol.SYSTEM) {
+      throw new AccionNoPermitidaError(actor.role, AccionViaje.CREATE, 'sólo M5 (servicio) crea viajes');
     }
     const viaje = new Viaje({
       ...datos,
-      reservaId: datos.reservaId ?? null,
-      estado: EstadoViaje.ASIGNADO,
+      reservationId: datos.reservationId ?? null,
+      state: EstadoViaje.PENDING_ARRIVAL,
       version: 1,
-      historial: [],
-      creadoEn: ahora,
-      arriboEn: null,
-      iniciadoEn: null,
-      finalizadoEn: null,
-      canceladoEn: null,
-      cierre: null,
-      cancelacion: null,
+      history: [],
+      createdAt: ahora,
+      arrivedAt: null,
+      startedAt: null,
+      completedAt: null,
+      cancelledAt: null,
+      closure: null,
+      cancellation: null,
     });
-    viaje.registrar(null, EstadoViaje.ASIGNADO, AccionViaje.CREAR, actor, ahora);
+    viaje.registrar(null, EstadoViaje.PENDING_ARRIVAL, AccionViaje.CREATE, actor, ahora);
     return viaje;
   }
 
   /** Reconstruye un viaje ya existente (por ejemplo, leído de la base). */
   static reconstituir(props: ViajeProps): Viaje {
-    return new Viaje({ ...props, historial: [...props.historial] });
+    return new Viaje({ ...props, history: [...props.history] });
   }
 
   // RF-6.3
   registrarArribo(actor: Actor, ahora: Date): void {
-    this.verificarPertenencia(actor, AccionViaje.REGISTRAR_ARRIBO);
-    const hacia = resolverTransicion(this.estado, AccionViaje.REGISTRAR_ARRIBO, actor.rol);
-    this.props.arriboEn = ahora;
-    this.aplicar(hacia, AccionViaje.REGISTRAR_ARRIBO, actor, ahora);
+    this.verificarPertenencia(actor, AccionViaje.REGISTER_ARRIVAL);
+    const hacia = resolverTransicion(this.state, AccionViaje.REGISTER_ARRIVAL, actor.role);
+    this.props.arrivedAt = ahora;
+    this.aplicar(hacia, AccionViaje.REGISTER_ARRIVAL, actor, ahora);
   }
 
   /**
@@ -107,28 +115,29 @@ export class Viaje {
    * antes de llamar a este método: si se llega acá, el código ya fue validado y consumido.
    */
   iniciar(actor: Actor, ahora: Date): void {
-    this.verificarPertenencia(actor, AccionViaje.INICIAR);
-    const hacia = resolverTransicion(this.estado, AccionViaje.INICIAR, actor.rol);
-    this.props.iniciadoEn = ahora;
-    this.aplicar(hacia, AccionViaje.INICIAR, actor, ahora);
+    this.verificarPertenencia(actor, AccionViaje.START);
+    const hacia = resolverTransicion(this.state, AccionViaje.START, actor.role);
+    this.props.startedAt = ahora;
+    this.aplicar(hacia, AccionViaje.START, actor, ahora);
   }
 
   // RF-6.5
   finalizar(actor: Actor, datos: DatosFinalizacion, ahora: Date): void {
-    this.verificarPertenencia(actor, AccionViaje.FINALIZAR);
-    const hacia = resolverTransicion(this.estado, AccionViaje.FINALIZAR, actor.rol);
-    if (!Number.isFinite(datos.distanciaRecorridaMetros) || datos.distanciaRecorridaMetros < 0) {
-      throw new DatosInvalidosError('distanciaRecorridaMetros debe ser un número mayor o igual a 0');
+    this.verificarPertenencia(actor, AccionViaje.COMPLETE);
+    const hacia = resolverTransicion(this.state, AccionViaje.COMPLETE, actor.role);
+    if (!Number.isFinite(datos.distanceKm) || datos.distanceKm < DISTANCIA_MINIMA_KM) {
+      throw new DatosInvalidosError(`distanceKm debe ser un número mayor o igual a ${DISTANCIA_MINIMA_KM}`);
     }
     // iniciadoEn siempre está definido en EN_CURSO, que es el único estado desde el que se finaliza.
-    const inicio = this.props.iniciadoEn as Date;
-    this.props.finalizadoEn = ahora;
-    this.props.cierre = {
-      distanciaRecorridaMetros: datos.distanciaRecorridaMetros,
-      duracionSegundos: Math.max(0, Math.round((ahora.getTime() - inicio.getTime()) / 1000)),
-      ubicacionFinal: datos.ubicacionFinal,
+    const inicio = this.props.startedAt as Date;
+    this.props.completedAt = ahora;
+    this.props.closure = {
+      distanceKm: datos.distanceKm,
+      durationSeconds: Math.max(0, Math.round((ahora.getTime() - inicio.getTime()) / 1000)),
+      finalLatitude: datos.finalLatitude,
+      finalLongitude: datos.finalLongitude,
     };
-    this.aplicar(hacia, AccionViaje.FINALIZAR, actor, ahora);
+    this.aplicar(hacia, AccionViaje.COMPLETE, actor, ahora);
   }
 
   // RF-6.6 y RF-6.7
@@ -138,71 +147,90 @@ export class Viaje {
     ahora: Date,
     config: ConfiguracionViaje = CONFIGURACION_POR_DEFECTO,
   ): void {
-    this.verificarPertenencia(actor, AccionViaje.CANCELAR);
-    const estadoAlCancelar = this.estado;
-    const hacia = resolverTransicion(estadoAlCancelar, AccionViaje.CANCELAR, actor.rol);
-    this.validarMotivo(actor.rol, solicitud.motivo, ahora, config);
-    if (solicitud.detalle !== undefined && solicitud.detalle.length > LARGO_MAXIMO_DETALLE) {
-      throw new DatosInvalidosError(`detalle no puede superar ${LARGO_MAXIMO_DETALLE} caracteres`);
+    this.verificarPertenencia(actor, AccionViaje.CANCEL);
+    const previousState = this.state;
+    const hacia = resolverTransicion(previousState, AccionViaje.CANCEL, actor.role);
+    this.validarMotivo(actor.role, solicitud.reason, ahora, config);
+    if (solicitud.detail !== undefined && solicitud.detail.length > LARGO_MAXIMO_DETALLE) {
+      throw new DatosInvalidosError(`detail no puede superar ${LARGO_MAXIMO_DETALLE} caracteres`);
     }
 
-    this.props.canceladoEn = ahora;
-    this.props.cancelacion = {
-      canceladoPor: actor.rol,
+    this.props.cancelledAt = ahora;
+    this.props.cancellation = {
+      cancelledBy: actor.role,
       actorId: actor.id,
-      motivo: solicitud.motivo,
-      detalle: solicitud.detalle,
-      estadoAlCancelar,
-      requiereRedespacho:
-        actor.rol === Rol.CONDUCTOR &&
-        estadoAlCancelar !== EstadoViaje.EN_CURSO &&
-        solicitud.motivo !== MotivoCancelacion.CLIENTE_NO_SE_PRESENTO,
+      reason: solicitud.reason,
+      detail: solicitud.detail,
+      previousState,
+      requiresRedispatch:
+        actor.role === Rol.DRIVER &&
+        previousState !== EstadoViaje.IN_PROGRESS &&
+        solicitud.reason !== MotivoCancelacion.CLIENT_NO_SHOW,
     };
-    this.aplicar(hacia, AccionViaje.CANCELAR, actor, ahora, solicitud.motivo, solicitud.detalle);
+    this.aplicar(hacia, AccionViaje.CANCEL, actor, ahora, solicitud.reason, solicitud.detail);
+  }
+
+  /** ¿Son estos los mismos datos con los que se creó el viaje? Decide entre 200 (reintento) y 409 en POST /trips. */
+  coincideCon(datos: Omit<DatosNuevoViaje, 'id'>): boolean {
+    const p = this.props;
+    return (
+      p.requestId === datos.requestId &&
+      (p.reservationId ?? null) === (datos.reservationId ?? null) &&
+      p.clientId === datos.clientId &&
+      p.driverId === datos.driverId &&
+      p.vehicleId === datos.vehicleId &&
+      p.vehicleType === datos.vehicleType &&
+      p.originLatitude === datos.originLatitude &&
+      p.originLongitude === datos.originLongitude &&
+      p.destinationLatitude === datos.destinationLatitude &&
+      p.destinationLongitude === datos.destinationLongitude &&
+      (p.originAddress ?? null) === (datos.originAddress ?? null) &&
+      (p.destinationAddress ?? null) === (datos.destinationAddress ?? null)
+    );
   }
 
   get id(): string {
     return this.props.id;
   }
 
-  get estado(): EstadoViaje {
-    return this.props.estado;
+  get state(): EstadoViaje {
+    return this.props.state;
   }
 
   get version(): number {
     return this.props.version;
   }
 
-  get historial(): readonly TransicionViaje[] {
-    return this.props.historial;
+  get history(): readonly TransicionViaje[] {
+    return this.props.history;
   }
 
   /** Copia de los datos, para persistir o para armar respuestas. */
   toProps(): ViajeProps {
-    return { ...this.props, historial: [...this.props.historial] };
+    return { ...this.props, history: [...this.props.history] };
   }
 
-  private verificarPertenencia(actor: Actor, accion: AccionViaje): void {
-    if (actor.rol === Rol.CONDUCTOR && actor.id !== this.props.conductorId) {
-      throw new AccionNoPermitidaError(actor.rol, accion, 'no es el conductor asignado al viaje');
+  private verificarPertenencia(actor: Actor, action: AccionViaje): void {
+    if (actor.role === Rol.DRIVER && actor.id !== this.props.driverId) {
+      throw new AccionNoPermitidaError(actor.role, action, 'no es el conductor asignado al viaje');
     }
-    if (actor.rol === Rol.CLIENTE && actor.id !== this.props.clienteId) {
-      throw new AccionNoPermitidaError(actor.rol, accion, 'no es el cliente del viaje');
+    if (actor.role === Rol.CLIENT && actor.id !== this.props.clientId) {
+      throw new AccionNoPermitidaError(actor.role, action, 'no es el cliente del viaje');
     }
   }
 
-  private validarMotivo(rol: Rol, motivo: MotivoCancelacion, ahora: Date, config: ConfiguracionViaje): void {
-    if (!(MOTIVOS_POR_ROL[rol] ?? []).includes(motivo)) {
-      throw new MotivoNoPermitidoError(motivo, `no es un motivo válido para ${rol}`);
+  private validarMotivo(role: Rol, reason: MotivoCancelacion, ahora: Date, config: ConfiguracionViaje): void {
+    if (!(MOTIVOS_POR_ROL[role] ?? []).includes(reason)) {
+      throw new MotivoNoPermitidoError(reason, `no es un motivo válido para ${role}`);
     }
-    if (motivo === MotivoCancelacion.CLIENTE_NO_SE_PRESENTO) {
-      if (this.estado !== EstadoViaje.CONDUCTOR_ARRIBADO || this.props.arriboEn === null) {
-        throw new MotivoNoPermitidoError(motivo, 'el conductor todavía no registró el arribo');
+    if (reason === MotivoCancelacion.CLIENT_NO_SHOW) {
+      if (this.state !== EstadoViaje.DRIVER_ARRIVED || this.props.arrivedAt === null) {
+        throw new MotivoNoPermitidoError(reason, 'el conductor todavía no registró el arribo');
       }
-      const minutosEsperando = (ahora.getTime() - this.props.arriboEn.getTime()) / 60_000;
+      const minutosEsperando = (ahora.getTime() - this.props.arrivedAt.getTime()) / 60_000;
       if (minutosEsperando < config.esperaMinimaArriboMinutos) {
         throw new MotivoNoPermitidoError(
-          motivo,
+          reason,
           `deben pasar ${config.esperaMinimaArriboMinutos} minutos desde el arribo`,
         );
       }
@@ -210,37 +238,37 @@ export class Viaje {
   }
 
   private aplicar(
-    hacia: EstadoViaje,
-    accion: AccionViaje,
+    to: EstadoViaje,
+    action: AccionViaje,
     actor: Actor,
     ahora: Date,
-    motivo?: MotivoCancelacion,
-    detalle?: string,
+    reason?: MotivoCancelacion,
+    detail?: string,
   ): void {
-    this.registrar(this.estado, hacia, accion, actor, ahora, motivo, detalle);
-    this.props.estado = hacia;
+    this.registrar(this.state, to, action, actor, ahora, reason, detail);
+    this.props.state = to;
     this.props.version += 1;
   }
 
   private registrar(
-    desde: EstadoViaje | null,
-    hacia: EstadoViaje,
-    accion: AccionViaje,
+    from: EstadoViaje | null,
+    to: EstadoViaje,
+    action: AccionViaje,
     actor: Actor,
     ahora: Date,
-    motivo?: MotivoCancelacion,
-    detalle?: string,
+    reason?: MotivoCancelacion,
+    detail?: string,
   ): void {
     const transicion: TransicionViaje = Object.freeze({
-      secuencia: this.props.historial.length + 1,
-      desde,
-      hacia,
-      accion,
+      sequence: this.props.history.length + 1,
+      from,
+      to,
+      action,
       actor: Object.freeze({ ...actor }),
-      ocurridoEn: ahora,
-      ...(motivo !== undefined && { motivo }),
-      ...(detalle !== undefined && { detalle }),
+      occurredAt: ahora,
+      ...(reason !== undefined && { reason }),
+      ...(detail !== undefined && { detail }),
     });
-    this.props.historial.push(transicion);
+    this.props.history.push(transicion);
   }
 }

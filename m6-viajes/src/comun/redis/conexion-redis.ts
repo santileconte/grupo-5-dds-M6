@@ -61,7 +61,7 @@ export class ConexionRedis implements OnApplicationShutdown {
     return this.esperando;
   }
 
-  /** Para /salud/detalle: falla si Redis no responde a tiempo. */
+  /** Para /health/details: falla si Redis no responde a tiempo. */
   async verificarConexion(): Promise<void> {
     await this.esperarConexion();
     await this.cliente.ping();

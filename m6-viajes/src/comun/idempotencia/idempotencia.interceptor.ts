@@ -39,7 +39,7 @@ export class IdempotenciaInterceptor implements NestInterceptor {
     }
     if (clave.length === 0 || clave.length > LARGO_MAXIMO_CLAVE) {
       throw new ValidacionError([
-        { campo: 'Idempotency-Key', mensaje: `debe tener entre 1 y ${LARGO_MAXIMO_CLAVE} caracteres` },
+        { field: 'Idempotency-Key', message: `debe tener entre 1 y ${LARGO_MAXIMO_CLAVE} caracteres` },
       ]);
     }
 

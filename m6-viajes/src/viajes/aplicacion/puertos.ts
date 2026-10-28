@@ -9,13 +9,13 @@ import { SobreEvento } from './eventos';
  */
 
 export interface FiltrosViajes {
-  clienteId?: string;
-  conductorId?: string;
-  estados?: EstadoViaje[];
-  desde?: Date;
-  hasta?: Date;
-  pagina: number;
-  tamanio: number;
+  clientId?: string;
+  driverId?: string;
+  states?: EstadoViaje[];
+  from?: Date;
+  to?: Date;
+  page: number;
+  pageSize: number;
 }
 
 export interface PaginaDeViajes {
@@ -25,12 +25,11 @@ export interface PaginaDeViajes {
 
 export interface RepositorioViajes {
   buscarPorId(id: string): Promise<Viaje | null>;
-  buscarPorAsignacion(asignacionId: string): Promise<Viaje | null>;
-  buscarActivoPorSolicitud(solicitudId: string): Promise<Viaje | null>;
+  buscarPorSolicitud(requestId: string): Promise<Viaje | null>;
   listar(filtros: FiltrosViajes): Promise<PaginaDeViajes>;
   /**
    * Guarda un viaje nuevo junto con sus eventos en la bandeja de salida, todo en una transacción.
-   * Si ya existe uno con la misma asignación devuelve ese, sin guardar nada.
+   * Si ya existe uno con el mismo requestId devuelve ese, sin guardar nada.
    */
   insertar(viaje: Viaje, eventos: SobreEvento[]): Promise<Viaje>;
   /**
@@ -53,7 +52,7 @@ export interface BandejaDeSalida {
    * desordenar los eventos, y registra el error; ese evento se reintenta en la próxima vuelta.
    */
   procesarPendientes(limite: number, publicar: (evento: SobreEvento) => Promise<void>): Promise<ResultadoLote>;
-  /** Cuántos eventos esperan publicarse y desde cuándo espera el más viejo (para /salud/detalle). */
+  /** Cuántos eventos esperan publicarse y desde cuándo espera el más viejo (para /health/details). */
   resumenPendientes(): Promise<ResumenPendientes>;
 }
 
@@ -76,7 +75,7 @@ export type ResultadoValidacionCodigo = 'VALIDO' | 'INVALIDO';
 
 /** Valida y consume el código QR de un solo uso contra M8 (RF-6.4, RF-8.3). */
 export interface ValidadorCodigoVerificacion {
-  validarYConsumir(viajeId: string, codigo: string, idCorrelacion: string): Promise<ResultadoValidacionCodigo>;
+  validarYConsumir(tripId: string, code: string, correlationId: string): Promise<ResultadoValidacionCodigo>;
 }
 
 export interface Reloj {

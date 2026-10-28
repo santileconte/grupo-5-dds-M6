@@ -10,7 +10,7 @@ import { CONTADOR_PEDIDOS, ContadorPedidos } from './contador';
 export interface ConfiguracionLimite {
   /** Pedidos por minuto para clientes, conductores y operadores. 0 = sin límite. */
   porMinuto: number;
-  /** Pedidos por minuto para otros módulos (rol SERVICIO), que hacen muchos más pedidos. 0 = sin límite. */
+  /** Pedidos por minuto para otros módulos (rol SYSTEM), que hacen muchos más pedidos. 0 = sin límite. */
   porMinutoServicio: number;
 }
 
@@ -42,7 +42,7 @@ export class LimitePedidosGuard implements CanActivate {
     const pedido = ejecucion.switchToHttp().getRequest<PedidoConContexto>();
     if (esPublico || !pedido.actor) return true;
 
-    const limite = pedido.actor.rol === Rol.SERVICIO ? this.config.porMinutoServicio : this.config.porMinuto;
+    const limite = pedido.actor.role === Rol.SYSTEM ? this.config.porMinutoServicio : this.config.porMinuto;
     if (limite <= 0) return true;
 
     let conteo;

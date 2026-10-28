@@ -16,11 +16,11 @@ describe('SaludService', () => {
   it('OK cuando todo responde (y lo no configurado no cuenta como error)', async () => {
     const salud = new SaludService(poolQue(async () => ({})), new PublicadorEventosEnLog(), null, bandeja());
     const informe = await salud.informe();
-    expect(informe.estado).toBe('OK');
-    expect(informe.componentes).toMatchObject({
-      postgres: { estado: 'OK' },
-      rabbitmq: { estado: 'NO_CONFIGURADO' },
-      redis: { estado: 'NO_CONFIGURADO' },
+    expect(informe.status).toBe('OK');
+    expect(informe.components).toMatchObject({
+      postgres: { status: 'OK' },
+      rabbitmq: { status: 'NOT_CONFIGURED' },
+      redis: { status: 'NOT_CONFIGURED' },
     });
   });
 
@@ -29,32 +29,32 @@ describe('SaludService', () => {
       throw new Error('no se pudo conectar a postgres://m6:secreta@db:5432');
     });
     const informe = await new SaludService(pool, new PublicadorEventosEnLog(), null, bandeja()).informe();
-    expect(informe.estado).toBe('ERROR');
-    expect(informe.componentes.postgres.detalle).not.toContain('secreta');
+    expect(informe.status).toBe('ERROR');
+    expect(informe.components.postgres.detail).not.toContain('secreta');
   });
 
   it('ERROR si PostgreSQL no responde a tiempo (nunca espera indefinidamente)', async () => {
     const pool = poolQue(() => new Promise(() => undefined));
     const inicio = Date.now();
     const informe = await new SaludService(pool, new PublicadorEventosEnLog(), null, bandeja()).informe();
-    expect(informe.componentes.postgres).toMatchObject({ estado: 'ERROR', detalle: expect.stringContaining('sin respuesta') });
+    expect(informe.components.postgres).toMatchObject({ status: 'ERROR', detail: expect.stringContaining('sin respuesta') });
     expect(Date.now() - inicio).toBeLessThan(3000);
   });
 
-  it('DEGRADADO si RabbitMQ y Redis no están disponibles', async () => {
+  it('DEGRADED si RabbitMQ y Redis no están disponibles', async () => {
     const rabbit = new PublicadorEventosRabbitMQ('amqp://guest:guest@127.0.0.1:1', 500);
     const redis = new ConexionRedis('redis://127.0.0.1:1', 300);
     try {
       const informe = await new SaludService(poolQue(async () => ({})), rabbit, redis, bandeja()).informe();
-      expect(informe.estado).toBe('DEGRADADO');
-      expect(informe.componentes).toMatchObject({ rabbitmq: { estado: 'ERROR' }, redis: { estado: 'ERROR' } });
+      expect(informe.status).toBe('DEGRADED');
+      expect(informe.components).toMatchObject({ rabbitmq: { status: 'ERROR' }, redis: { status: 'ERROR' } });
     } finally {
       await rabbit.onApplicationShutdown();
       await redis.onApplicationShutdown();
     }
   });
 
-  it('DEGRADADO si hay eventos esperando hace más de un minuto', async () => {
+  it('DEGRADED si hay eventos esperando hace más de un minuto', async () => {
     const haceDosMinutos = new Date(Date.now() - 120_000);
     const informe = await new SaludService(
       poolQue(async () => ({})),
@@ -62,7 +62,7 @@ describe('SaludService', () => {
       null,
       bandeja(haceDosMinutos, 3),
     ).informe();
-    expect(informe.estado).toBe('DEGRADADO');
-    expect(informe.bandejaDeSalida).toEqual({ pendientes: 3, antiguedadMaximaSegundos: 120 });
+    expect(informe.status).toBe('DEGRADED');
+    expect(informe.outbox).toEqual({ pending: 3, oldestPendingSeconds: 120 });
   });
 });

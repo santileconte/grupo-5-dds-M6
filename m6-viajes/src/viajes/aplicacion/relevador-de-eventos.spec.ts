@@ -19,7 +19,7 @@ describe('RelevadorDeEventos', () => {
   let bandeja: RepositorioViajesEnMemoria;
   let publicador: PublicadorDePrueba;
   let relevador: RelevadorDeEventos;
-  const conductor = { rol: Rol.CONDUCTOR, id: 'conductor-1' };
+  const conductor = { role: Rol.DRIVER, id: 'conductor-1' };
 
   beforeEach(() => {
     bandeja = new RepositorioViajesEnMemoria();
@@ -32,16 +32,17 @@ describe('RelevadorDeEventos', () => {
     const viaje = Viaje.crear(
       {
         id,
-        solicitudId: `s-${id}`,
-        asignacionId: `a-${id}`,
-        clienteId: 'cliente-1',
-        conductorId: conductor.id,
-        vehiculoId: 'v',
-        tipoVehiculo: TipoVehiculo.AUTO,
-        origen: { latitud: 0, longitud: 0 },
-        destino: { latitud: 0, longitud: 0 },
+        requestId: `s-${id}`,
+        clientId: 'cliente-1',
+        driverId: conductor.id,
+        vehicleId: 'v',
+        vehicleType: TipoVehiculo.CAR,
+        originLatitude: 0,
+        originLongitude: 0,
+        destinationLatitude: 0,
+        destinationLongitude: 0,
       },
-      { rol: Rol.SERVICIO, id: 'm5' },
+      { role: Rol.SYSTEM, id: 'm5' },
       new Date(),
     );
     await bandeja.insertar(viaje, [eventoDeUltimaTransicion(viaje, 'corr')]);
@@ -54,11 +55,11 @@ describe('RelevadorDeEventos', () => {
     await viajeConDosEventos('v2');
 
     await expect(relevador.procesar()).resolves.toBe(4);
-    expect(publicador.recibidos.map((r) => `${r.evento.datos.viajeId}:${r.routingKey}`)).toEqual([
-      'v1:viajes.viaje.creado',
-      'v1:viajes.conductor.arribado',
-      'v2:viajes.viaje.creado',
-      'v2:viajes.conductor.arribado',
+    expect(publicador.recibidos.map((r) => `${r.evento.payload.tripId}:${r.routingKey}`)).toEqual([
+      'v1:trips.trip.created',
+      'v1:trips.driver.arrived',
+      'v2:trips.trip.created',
+      'v2:trips.driver.arrived',
     ]);
     await expect(relevador.procesar()).resolves.toBe(0);
   });
@@ -82,10 +83,10 @@ describe('RelevadorDeEventos', () => {
   it('un cambio que no se guarda (conflicto de versión) no deja eventos', async () => {
     await viajeConDosEventos('v1');
     const viejo = (await bandeja.buscarPorId('v1')) as Viaje;
-    viejo.cancelar({ rol: Rol.OPERADOR, id: 'op' }, { motivo: 'OTRO' as never }, new Date());
+    viejo.cancelar({ role: Rol.OPERATOR, id: 'op' }, { reason: 'OTHER' as never }, new Date());
     await expect(bandeja.actualizar(viejo, 1, [eventoDeUltimaTransicion(viejo, 'corr')])).rejects.toThrow();
 
     await relevador.procesar();
-    expect(publicador.recibidos.map((r) => r.evento.tipo)).toEqual(['ViajeCreado', 'ConductorArribado']);
+    expect(publicador.recibidos.map((r) => r.evento.eventType)).toEqual(['TripCreated', 'DriverArrived']);
   });
 });

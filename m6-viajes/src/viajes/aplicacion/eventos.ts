@@ -4,97 +4,97 @@ import { Viaje } from '../dominio/viaje';
 
 /** Sobre común de eventos. Debe coincidir con contratos/eventos/m6-viajes.asyncapi.yaml. */
 export interface SobreEvento {
-  idEvento: string;
-  tipo: string;
-  version: number;
-  ocurridoEn: string;
-  productor: string;
-  idCorrelacion: string;
-  datos: Record<string, unknown>;
+  eventId: string;
+  eventType: string;
+  eventVersion: number;
+  occurredAt: string;
+  producer: string;
+  correlationId: string;
+  payload: Record<string, unknown>;
 }
 
-const PRODUCTOR = 'm6-viajes';
+const PRODUCER = 'm6-viajes';
 
 /** Routing key de cada evento en el exchange `movilidad.eventos` (ver contrato AsyncAPI). */
 export const ROUTING_KEYS: Readonly<Record<string, string>> = {
-  ViajeCreado: 'viajes.viaje.creado',
-  ConductorArribado: 'viajes.conductor.arribado',
-  ViajeIniciado: 'viajes.viaje.iniciado',
-  ViajeFinalizado: 'viajes.viaje.finalizado',
-  ViajeCancelado: 'viajes.viaje.cancelado',
+  TripCreated: 'trips.trip.created',
+  DriverArrived: 'trips.driver.arrived',
+  TripStarted: 'trips.trip.started',
+  TripCompleted: 'trips.trip.completed',
+  TripCancelled: 'trips.trip.cancelled',
 };
 
 export function routingKeyDe(evento: SobreEvento): string {
-  const routingKey = ROUTING_KEYS[evento.tipo];
-  if (!routingKey) throw new Error(`No hay routing key para el evento ${evento.tipo}`);
+  const routingKey = ROUTING_KEYS[evento.eventType];
+  if (!routingKey) throw new Error(`No hay routing key para el evento ${evento.eventType}`);
   return routingKey;
 }
 
 const iso = (fecha: Date | null) => (fecha ? fecha.toISOString() : null);
 
 /** Arma el evento correspondiente a la última transición del viaje. */
-export function eventoDeUltimaTransicion(viaje: Viaje, idCorrelacion: string): SobreEvento {
+export function eventoDeUltimaTransicion(viaje: Viaje, correlationId: string): SobreEvento {
   const v = viaje.toProps();
-  const ultima = v.historial[v.historial.length - 1];
+  const ultima = v.history[v.history.length - 1];
   const base = {
-    viajeId: v.id,
-    versionViaje: v.version,
-    solicitudId: v.solicitudId,
-    reservaId: v.reservaId ?? null,
-    clienteId: v.clienteId,
-    conductorId: v.conductorId,
+    tripId: v.id,
+    tripVersion: v.version,
+    requestId: v.requestId,
+    reservationId: v.reservationId ?? null,
+    clientId: v.clientId,
+    driverId: v.driverId,
   };
 
-  let tipo: string;
-  let datos: Record<string, unknown>;
-  switch (ultima.accion) {
-    case AccionViaje.CREAR:
-      tipo = 'ViajeCreado';
-      datos = { ...base, vehiculoId: v.vehiculoId, tipoVehiculo: v.tipoVehiculo, creadoEn: iso(v.creadoEn) };
+  let eventType: string;
+  let payload: Record<string, unknown>;
+  switch (ultima.action) {
+    case AccionViaje.CREATE:
+      eventType = 'TripCreated';
+      payload = { ...base, vehicleId: v.vehicleId, vehicleType: v.vehicleType, createdAt: iso(v.createdAt) };
       break;
-    case AccionViaje.REGISTRAR_ARRIBO:
-      tipo = 'ConductorArribado';
-      datos = { ...base, arriboEn: iso(v.arriboEn) };
+    case AccionViaje.REGISTER_ARRIVAL:
+      eventType = 'DriverArrived';
+      payload = { ...base, arrivedAt: iso(v.arrivedAt) };
       break;
-    case AccionViaje.INICIAR:
-      tipo = 'ViajeIniciado';
-      datos = { ...base, tipoVehiculo: v.tipoVehiculo, iniciadoEn: iso(v.iniciadoEn) };
+    case AccionViaje.START:
+      eventType = 'TripStarted';
+      payload = { ...base, vehicleType: v.vehicleType, startedAt: iso(v.startedAt) };
       break;
-    case AccionViaje.FINALIZAR:
-      tipo = 'ViajeFinalizado';
-      datos = {
+    case AccionViaje.COMPLETE:
+      eventType = 'TripCompleted';
+      payload = {
         ...base,
-        tipoVehiculo: v.tipoVehiculo,
-        iniciadoEn: iso(v.iniciadoEn),
-        finalizadoEn: iso(v.finalizadoEn),
-        distanciaRecorridaMetros: v.cierre?.distanciaRecorridaMetros,
-        duracionSegundos: v.cierre?.duracionSegundos,
+        vehicleType: v.vehicleType,
+        startedAt: iso(v.startedAt),
+        completedAt: iso(v.completedAt),
+        distanceKm: v.closure?.distanceKm,
+        durationSeconds: v.closure?.durationSeconds,
       };
       break;
-    case AccionViaje.CANCELAR:
-      tipo = 'ViajeCancelado';
-      datos = {
+    case AccionViaje.CANCEL:
+      eventType = 'TripCancelled';
+      payload = {
         ...base,
-        tipoVehiculo: v.tipoVehiculo,
-        canceladoPor: v.cancelacion?.canceladoPor,
-        motivo: v.cancelacion?.motivo,
-        estadoAlCancelar: v.cancelacion?.estadoAlCancelar,
-        requiereRedespacho: v.cancelacion?.requiereRedespacho,
-        creadoEn: iso(v.creadoEn),
-        arriboEn: iso(v.arriboEn),
-        iniciadoEn: iso(v.iniciadoEn),
-        canceladoEn: iso(v.canceladoEn),
+        vehicleType: v.vehicleType,
+        cancelledBy: v.cancellation?.cancelledBy,
+        reason: v.cancellation?.reason,
+        previousState: v.cancellation?.previousState,
+        requiresRedispatch: v.cancellation?.requiresRedispatch,
+        createdAt: iso(v.createdAt),
+        arrivedAt: iso(v.arrivedAt),
+        startedAt: iso(v.startedAt),
+        cancelledAt: iso(v.cancelledAt),
       };
       break;
   }
 
   return {
-    idEvento: randomUUID(),
-    tipo,
-    version: 1,
-    ocurridoEn: ultima.ocurridoEn.toISOString(),
-    productor: PRODUCTOR,
-    idCorrelacion,
-    datos,
+    eventId: randomUUID(),
+    eventType,
+    eventVersion: 1,
+    occurredAt: ultima.occurredAt.toISOString(),
+    producer: PRODUCER,
+    correlationId,
+    payload,
   };
 }

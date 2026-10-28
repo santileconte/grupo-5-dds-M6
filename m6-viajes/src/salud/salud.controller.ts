@@ -3,7 +3,7 @@ import { Response } from 'express';
 import { Publico } from '../comun/publico.decorator';
 import { InformeSalud, SaludService } from './salud.service';
 
-@Controller('salud')
+@Controller('health')
 export class SaludController {
   constructor(private readonly salud: SaludService) {}
 
@@ -13,16 +13,16 @@ export class SaludController {
    */
   @Get()
   @Publico()
-  verificar(): { estado: string } {
-    return { estado: 'OK' };
+  verificar(): { status: string; timestamp: string } {
+    return { status: 'UP', timestamp: new Date().toISOString() };
   }
 
   /** Readiness y diagnóstico: estado de PostgreSQL, RabbitMQ, Redis y de la bandeja de eventos. */
-  @Get('detalle')
+  @Get('details')
   @Publico()
-  async detalle(@Res({ passthrough: true }) res: Response): Promise<InformeSalud> {
+  async detail(@Res({ passthrough: true }) res: Response): Promise<InformeSalud> {
     const informe = await this.salud.informe();
-    res.status(informe.estado === 'ERROR' ? 503 : 200);
+    res.status(informe.status === 'ERROR' ? 503 : 200);
     return informe;
   }
 }

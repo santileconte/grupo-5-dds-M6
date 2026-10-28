@@ -731,6 +731,100 @@ entrega):
 
 ---
 
+## Paso 17 – Adecuar el código al contrato del Grupo 12
+
+**Qué se hizo:** se comparó el contrato del Grupo 12 (la otra implementación de M6) con el nuestro y
+se adecuó el código a dos de las diferencias detectadas, para acercar los dos M6 y que el equipo
+integrador pueda usar cualquiera.
+
+**Por qué:** los dos contratos cubrían las mismas funciones (RF-6.1 a RF-6.8), pero no coincidía
+ninguna ruta, campo ni evento. Se eligieron dos puntos:
+1. **Modelo de datos más preciso:** coordenadas y distancia.
+2. **Idioma del dominio:** el Grupo 12 usa inglés (`/trips`, `PENDING_ARRIVAL`).
+
+**Cambios en el modelo de datos:**
+- `origen` y `destino` (objetos anidados) pasaron a cuatro campos sueltos de tipo `double`:
+  `originLatitude`, `originLongitude`, `destinationLatitude` y `destinationLongitude`. Las
+  direcciones quedan como `originAddress` y `destinationAddress`, opcionales.
+- La distancia pasó de metros enteros (`distanciaRecorridaMetros`) a kilómetros decimales
+  (`distanceKm`), en la API, en el cierre del viaje y en el evento `TripCompleted`.
+- La ubicación final pasó a `finalLatitude` y `finalLongitude`, opcionales.
+
+**Cambios de idioma:**
+
+| Qué | Antes | Ahora |
+|---|---|---|
+| Rutas | `/viajes`, `/arribo`, `/inicio`, `/finalizacion`, `/cancelacion`, `/historial` | `/trips`, `/arrived`, `/start`, `/complete`, `/cancel`, `/history` |
+| Health | `/salud`, `/salud/detalle` | `/health`, `/health/details` |
+| Estados | `ASIGNADO`, `CONDUCTOR_ARRIBADO`, `EN_CURSO`, `FINALIZADO`, `CANCELADO` | `PENDING_ARRIVAL`, `DRIVER_ARRIVED`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED` |
+| Roles (y claim del token) | `CLIENTE`, `CONDUCTOR`, `OPERADOR`, `SERVICIO` (claim `rol`) | `CLIENT`, `DRIVER`, `OPERATOR`, `SYSTEM` (claim `role`) |
+| Vehículos y motivos | `AUTO`, `MOTO`, `PROBLEMA_CON_VEHICULO`, … | `CAR`, `MOTORCYCLE`, `VEHICLE_PROBLEM`, … |
+| Campos | `clienteId`, `conductorId`, `estado`, `creadoEn`, `pagina`, `tamanio`, … | `clientId`, `driverId`, `state`, `createdAt`, `page`, `pageSize`, … |
+| Códigos de error | `TRANSICION_INVALIDA`, `NO_AUTENTICADO`, … | `INVALID_STATE_TRANSITION`, `UNAUTHENTICATED`, … |
+| Eventos | `ViajeCreado`, `ViajeFinalizado`, … | `TripCreated`, `TripCompleted`, … |
+| Routing keys | `viajes.viaje.finalizado` | `trips.trip.completed` |
+| Sobre del evento | `idEvento, tipo, version, ocurridoEn, productor, idCorrelacion, datos` | `eventId, eventType, eventVersion, occurredAt, producer, correlationId, payload` |
+| Estado de salud | `{ estado: "OK" }` | `{ status: "UP", timestamp }` (el detalle usa `status`, `components`, `outbox`) |
+
+**Base de datos:** la migración `003_contrato_en_ingles.sql` traduce los valores guardados
+(estados, roles, acciones, motivos), convierte metros a kilómetros, pasa `origen`/`destino` de
+JSONB a columnas `double precision` y recrea las restricciones. No cambian los nombres de tablas
+ni de columnas. Si quedan eventos sin publicar en `eventos_salientes`, la migración se detiene a
+propósito: están guardados con el formato viejo y hay que dejar que salgan antes de migrar.
+
+**Qué no se cambió:**
+- Nombres internos (clases, métodos, archivos, columnas), mensajes de error y comentarios: siguen
+  en español.
+- El exchange `movilidad.eventos`, que ya se propuso a todos los grupos.
+- El pedido a M8 (`POST /qr/validaciones` con `viajeId` y `codigo`), porque es la API de otro grupo.
+
+**Ajustes de compatibilidad con el Grupo 12** (hechos justo después del cambio de idioma):
+- **Errores:** siguen en `application/problem+json`, pero ahora también llevan `message` (igual a
+  `detail`) y `timestamp`, así que un cliente hecho para el formato del Grupo 12 también los entiende.
+- **Viaje:** la respuesta expone `distanceKm` y `durationMinutes` (redondeados desde los segundos) a
+  nivel raíz, como el `Trip` del Grupo 12. `closure` se mantiene con el detalle.
+- **Distancia mínima:** `distanceKm` pasó a exigir 0,1 como mínimo (antes 0), igual que ellos. Una
+  distancia menor responde `400`.
+
+**Guía para el Grupo 12:** se reescribió la sección "M6 – Otra implementación (Grupo 12)" de
+`docs/acuerdos-con-otros-grupos.md` en tres partes: (1) lo que cambiamos nosotros para parecernos a
+ellos, (2) un paso a paso con lo que tienen que cambiar ellos para adecuarse a nuestro contrato, y
+(3) cuatro puntos para decidir juntos (cancelación en uno o dos estados, `/api/v1` y puerto,
+`durationMinutes` y el re-despacho con `requestId` nuevo). Se actualizaron también las novedades, las
+convenciones comunes y los mensajes a M2 con los nombres nuevos. Para dejar el `Trip` más parecido al
+de ellos se agregó `updatedAt` (momento de la última transición) y `durationMinutes` en el resumen.
+
+**Idempotencia por `requestId`** (último ajuste): se eliminó `assignmentId` y la creación se maneja
+como en el Grupo 12.
+- `POST /trips` es idempotente por `requestId`: si ya existe un viaje con esos mismos datos, devuelve
+  ese viaje en su estado actual con `200` y sin publicar otro evento. Si el `requestId` existe con
+  datos distintos, responde `409 REQUEST_ID_CONFLICT` (reemplaza a `ACTIVE_TRIP_EXISTS`).
+- Una solicitud tiene un único viaje. Antes, tras cancelar, M5 podía crear uno nuevo con otra
+  asignación; ahora tiene que usar un `requestId` nuevo al re-despachar. Hay que confirmarlo con M5
+  (quedó como pregunta en `docs/acuerdos-con-otros-grupos.md`).
+- Base de datos: la migración `004_idempotencia_por_solicitud.sql` borra `asignacion_id` y el índice
+  parcial de viaje activo, y hace único `solicitud_id`. Se detiene a propósito si ya hay solicitudes
+  con más de un viaje, porque la restricción no se podría crear.
+- Código: el repositorio busca `buscarPorSolicitud`, y `Viaje.coincideCon` decide entre `200` y `409`
+  comparando los datos de creación (también si dos pedidos llegan a la vez y gana el primero).
+
+**Diferencias que siguen con el Grupo 12:**
+- Los errores llevan además los campos de RFC 9457 (`type`, `title`, `instance`) que ellos no tienen.
+- Una sola cancelación (`CANCELLED` con `cancelledBy`) en vez de dos estados y dos eventos.
+- La duración la calcula M6 (en segundos, y la expone también en minutos); ellos la reciben del
+  conductor.
+- Se mantienen `ETag`, `Idempotency-Key` y los límites de pedidos, que ellos no definen.
+
+**Cómo se comprobó:**
+- `npm run typecheck` sin errores.
+- `npm test`: 56 tests unitarios y 55 de integración en verde (los ajustes de compatibilidad y de
+  idempotencia sumaron 4 tests respecto de los 54 y 53 que había antes del cambio).
+- `npm run contratos:validar`: ambos contratos válidos.
+- No se pudieron probar las migraciones 003 y 004 ni los 16 tests que necesitan PostgreSQL, Redis y RabbitMQ
+  (`npm run test:infra`): faltó correrlos con `npm run docker:levantar`.
+
+---
+
 ## Problemas que aparecieron al probar y cómo se resolvieron
 
 | Síntoma | Causa | Solución |
@@ -787,10 +881,10 @@ grupo-5-dds/
 | RNF-06 Configuración externa | Cumplido | `.env` / `.env.example` |
 | RNF-07 Tests unitarios y de integración | Cumplido | `npm test`, `npm run test:infra` |
 | RNF-08 Concurrencia | Cumplido | Versión + `UPDATE` condicional |
-| RNF-09 Idempotencia (TP2) | Cumplido en M6 | `Idempotency-Key` en Redis, creación por `asignacionId`, eventos con `idEvento` |
+| RNF-09 Idempotencia (TP2) | Cumplido en M6 | `Idempotency-Key` en Redis, creación por `assignmentId`, eventos con `eventId` |
 | RNF-10 Mensajería (TP2) | Cumplido | RabbitMQ + outbox, ADR-003 |
 | RNF-11 Caché y vencimiento (TP2) | Cumplido | Redis para `Idempotency-Key`, ADR-004 |
-| RNF-14 Salud y diagnóstico (TP2) | Cumplido | `/salud`, `/salud/detalle`, logs JSON con `idCorrelacion`/`viajeId` |
+| RNF-14 Salud y diagnóstico (TP2) | Cumplido | `/health`, `/health/details`, logs JSON con `correlationId`/`tripId` |
 | RNF-17 Automatización (TP2) | Cumplido | `.github/workflows/m6-viajes.yml`, corridas en verde en GitHub |
 | RNF-12 Seguridad (TP2-TP3) | Cumplido (falta el token real de M1) | JWT con `exp`, roles, límite de pedidos, helmet, cuerpos acotados, `npm audit` en CI, ADR-005 |
 | RNF-13 Resiliencia (TP2) | Cumplido | Timeouts con M8, RabbitMQ y Redis; eventos que esperan si el broker se cae; sin Redis se sigue operando; sobrevive a la caída de PostgreSQL |

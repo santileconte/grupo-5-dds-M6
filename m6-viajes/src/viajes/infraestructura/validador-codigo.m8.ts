@@ -18,17 +18,17 @@ export class ValidadorCodigoM8 implements ValidadorCodigoVerificacion {
     private readonly timeoutMs: number,
   ) {}
 
-  async validarYConsumir(viajeId: string, codigo: string, idCorrelacion: string): Promise<ResultadoValidacionCodigo> {
+  async validarYConsumir(tripId: string, code: string, correlationId: string): Promise<ResultadoValidacionCodigo> {
     let respuesta: Response;
     try {
       respuesta = await fetch(`${this.urlBase}/qr/validaciones`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Correlation-Id': idCorrelacion },
-        body: JSON.stringify({ viajeId, codigo }),
+        headers: { 'Content-Type': 'application/json', 'X-Correlation-Id': correlationId },
+        body: JSON.stringify({ viajeId: tripId, codigo: code }),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (error) {
-      this.logger.warn(`M8 no respondió al validar el QR del viaje ${viajeId}: ${String(error)}`);
+      this.logger.warn(`M8 no respondió al validar el QR del viaje ${tripId}: ${String(error)}`);
       throw new DependenciaNoDisponibleError('M8 (Notificaciones)');
     }
 

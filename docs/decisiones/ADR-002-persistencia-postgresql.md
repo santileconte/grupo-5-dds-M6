@@ -23,8 +23,8 @@ no destructivo (RF-6.8).
 - **Historial:** la tabla `transiciones_viaje` sólo admite `INSERT`. Un trigger rechaza `UPDATE` y
   `DELETE`, así que el historial es inmutable aunque haya un error en el código.
 - **Unicidades garantizadas por la base, no sólo por el código:**
-  - `asignacion_id` es único (un viaje por asignación);
-  - un índice único parcial impide dos viajes activos para la misma solicitud.
+  - `solicitud_id` es único (un viaje por solicitud, igual que en el contrato del Grupo 12). Antes
+    la clave era `asignacion_id` más un índice parcial de viaje activo; la migración 004 lo reemplazó.
 
 ## Justificación
 

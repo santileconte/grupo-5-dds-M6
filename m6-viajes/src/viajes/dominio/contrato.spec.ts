@@ -14,32 +14,32 @@ const valores = (e: object): string[] => Object.values(e);
 
 describe('el dominio coincide con los contratos', () => {
   it.each([
-    ['EstadoViaje', EstadoViaje],
-    ['AccionViaje', AccionViaje],
-    ['Rol', Rol],
-    ['TipoVehiculo', TipoVehiculo],
-    ['MotivoCancelacion', MotivoCancelacion],
+    ['TripState', EstadoViaje],
+    ['TripAction', AccionViaje],
+    ['Role', Rol],
+    ['VehicleType', TipoVehiculo],
+    ['CancellationReason', MotivoCancelacion],
   ])('OpenAPI: %s', (nombre, enumeracion) => {
     expect(enumOpenapi(nombre)).toEqual(valores(enumeracion));
   });
 
   it.each([
-    ['EstadoViaje', EstadoViaje],
-    ['TipoVehiculo', TipoVehiculo],
-    ['MotivoCancelacion', MotivoCancelacion],
+    ['TripState', EstadoViaje],
+    ['VehicleType', TipoVehiculo],
+    ['CancellationReason', MotivoCancelacion],
   ])('AsyncAPI: %s', (nombre, enumeracion) => {
     expect(enumAsyncapi(nombre)).toEqual(valores(enumeracion));
   });
 
-  it('AsyncAPI: canceladoPor admite los roles humanos', () => {
-    expect(enumAsyncapi('Rol')).toEqual(valores(Rol).filter((r) => r !== Rol.SERVICIO));
+  it('AsyncAPI: cancelledBy admite los roles humanos', () => {
+    expect(enumAsyncapi('Role')).toEqual(valores(Rol).filter((r) => r !== Rol.SYSTEM));
   });
 });
 
 describe('los errores HTTP coinciden con el contrato', () => {
-  it('cada código del filtro está en el enum Problema.codigo y viceversa', async () => {
+  it('cada código del filtro está en el enum Problem.code y viceversa', async () => {
     const { CODIGOS } = await import('../../comun/problemas.filter');
-    const delContrato: string[] = openapi.components.schemas.Problema.properties.codigo.enum;
+    const delContrato: string[] = openapi.components.schemas.Problem.properties.code.enum;
     expect(Object.keys(CODIGOS).sort()).toEqual([...delContrato].sort());
   });
 });

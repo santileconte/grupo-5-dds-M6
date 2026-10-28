@@ -53,23 +53,26 @@ export async function crearApp(opciones: OpcionesApp = {}): Promise<AppDePrueba>
 
 const jwt = new JwtService({ secret: SECRETO_TESTS });
 
-export const bearer = (rol: string, id: string) => `Bearer ${jwt.sign({ sub: id, rol }, { expiresIn: '1h' })}`;
+export const bearer = (role: string, id: string) => `Bearer ${jwt.sign({ sub: id, role }, { expiresIn: '1h' })}`;
 
 export function nuevosIds() {
   return {
-    solicitudId: randomUUID(),
-    asignacionId: randomUUID(),
-    clienteId: randomUUID(),
-    conductorId: randomUUID(),
-    vehiculoId: randomUUID(),
+    requestId: randomUUID(),
+    clientId: randomUUID(),
+    driverId: randomUUID(),
+    vehicleId: randomUUID(),
   };
 }
 
 export function cuerpoCrearViaje(ids = nuevosIds()) {
   return {
     ...ids,
-    tipoVehiculo: 'AUTO',
-    origen: { latitud: -34.6037, longitud: -58.3816, direccion: 'Av. Corrientes 1000' },
-    destino: { latitud: -34.5889, longitud: -58.3974, direccion: 'Av. Santa Fe 3000' },
+    vehicleType: 'CAR',
+    originLatitude: -34.6037,
+    originLongitude: -58.3816,
+    originAddress: 'Av. Corrientes 1000',
+    destinationLatitude: -34.5889,
+    destinationLongitude: -58.3974,
+    destinationAddress: 'Av. Santa Fe 3000',
   };
 }

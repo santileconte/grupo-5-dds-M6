@@ -13,7 +13,7 @@ import {
   CodigoVerificacionInvalidoError,
   ConsultaNoPermitidaError,
   PrecondicionFallidaError,
-  ViajeActivoExistenteError,
+  SolicitudConDatosDistintosError,
   ViajeNoEncontradoError,
 } from './errores';
 import { eventoDeUltimaTransicion } from './eventos';
@@ -32,7 +32,7 @@ import {
 /** Datos comunes a cada pedido: quién lo hace y con qué id de correlación. */
 export interface Contexto {
   actor: Actor;
-  idCorrelacion: string;
+  correlationId: string;
 }
 
 /** Versión del If-Match, si el cliente la envió. */
@@ -52,60 +52,69 @@ export class ViajesService {
     @Inject(CONFIGURACION_VIAJES) private readonly config: ConfiguracionViaje,
   ) {}
 
-  /** Crea el viaje de una asignación. Idempotente por asignacionId: `creado` indica si es nuevo. */
+  /**
+   * Crea el viaje de una solicitud. Idempotente por requestId, como en el Grupo 12: si ya existe un viaje
+   * con esos mismos datos se devuelve (`creado: false`); si el requestId existe con datos distintos, 409.
+   */
   async crear(datos: Omit<DatosNuevoViaje, 'id'>, ctx: Contexto): Promise<{ viaje: Viaje; creado: boolean }> {
-    const existente = await this.repositorio.buscarPorAsignacion(datos.asignacionId);
+    const existente = await this.repositorio.buscarPorSolicitud(datos.requestId);
     if (existente) {
-      return { viaje: existente, creado: false };
-    }
-    if (await this.repositorio.buscarActivoPorSolicitud(datos.solicitudId)) {
-      throw new ViajeActivoExistenteError(datos.solicitudId);
+      return { viaje: this.mismosDatos(existente, datos), creado: false };
     }
 
     const nuevo = Viaje.crear({ ...datos, id: randomUUID() }, ctx.actor, this.reloj.ahora());
-    const guardado = await this.repositorio.insertar(nuevo, [eventoDeUltimaTransicion(nuevo, ctx.idCorrelacion)]);
-    // Si otro pedido con la misma asignación lo guardó primero, se devuelve ese (y no hay evento nuevo).
-    return { viaje: guardado, creado: guardado === nuevo };
+    const guardado = await this.repositorio.insertar(nuevo, [eventoDeUltimaTransicion(nuevo, ctx.correlationId)]);
+    // Si otro pedido con el mismo requestId lo guardó primero, se devuelve ese (y no hay evento nuevo).
+    return guardado === nuevo
+      ? { viaje: guardado, creado: true }
+      : { viaje: this.mismosDatos(guardado, datos), creado: false };
   }
 
-  async obtener(viajeId: string, ctx: Contexto): Promise<Viaje> {
-    const viaje = await this.repositorio.buscarPorId(viajeId);
-    if (!viaje || !this.puedeVer(viaje, ctx.actor)) {
-      throw new ViajeNoEncontradoError(viajeId);
+  private mismosDatos(viaje: Viaje, datos: Omit<DatosNuevoViaje, 'id'>): Viaje {
+    if (!viaje.coincideCon(datos)) {
+      throw new SolicitudConDatosDistintosError(datos.requestId);
     }
     return viaje;
   }
 
-  async historial(viajeId: string, ctx: Contexto): Promise<readonly TransicionViaje[]> {
-    if (ctx.actor.rol === Rol.SERVICIO) {
+  async obtener(tripId: string, ctx: Contexto): Promise<Viaje> {
+    const viaje = await this.repositorio.buscarPorId(tripId);
+    if (!viaje || !this.puedeVer(viaje, ctx.actor)) {
+      throw new ViajeNoEncontradoError(tripId);
+    }
+    return viaje;
+  }
+
+  async history(tripId: string, ctx: Contexto): Promise<readonly TransicionViaje[]> {
+    if (ctx.actor.role === Rol.SYSTEM) {
       throw new ConsultaNoPermitidaError('El historial sólo lo consultan el cliente, el conductor o un operador');
     }
-    return (await this.obtener(viajeId, ctx)).historial;
+    return (await this.obtener(tripId, ctx)).history;
   }
 
   async listar(filtros: FiltrosViajes, ctx: Contexto): Promise<PaginaDeViajes> {
     const { actor } = ctx;
     const efectivos: FiltrosViajes = { ...filtros };
-    if (actor.rol === Rol.CLIENTE) {
-      efectivos.clienteId = actor.id;
-    } else if (actor.rol === Rol.CONDUCTOR) {
-      efectivos.conductorId = actor.id;
-    } else if (actor.rol === Rol.SERVICIO && !filtros.clienteId && !filtros.conductorId) {
-      throw new DatosInvalidosError('Un servicio debe indicar clienteId o conductorId');
+    if (actor.role === Rol.CLIENT) {
+      efectivos.clientId = actor.id;
+    } else if (actor.role === Rol.DRIVER) {
+      efectivos.driverId = actor.id;
+    } else if (actor.role === Rol.SYSTEM && !filtros.clientId && !filtros.driverId) {
+      throw new DatosInvalidosError('Un servicio debe indicar clientId o driverId');
     }
     return this.repositorio.listar(efectivos);
   }
 
-  registrarArribo(viajeId: string, versionEsperada: VersionEsperada, ctx: Contexto): Promise<Viaje> {
-    return this.ejecutar(viajeId, versionEsperada, ctx, (viaje, ahora) => viaje.registrarArribo(ctx.actor, ahora));
+  registrarArribo(tripId: string, versionEsperada: VersionEsperada, ctx: Contexto): Promise<Viaje> {
+    return this.ejecutar(tripId, versionEsperada, ctx, (viaje, ahora) => viaje.registrarArribo(ctx.actor, ahora));
   }
 
-  iniciar(viajeId: string, codigo: string, versionEsperada: VersionEsperada, ctx: Contexto): Promise<Viaje> {
-    return this.ejecutar(viajeId, versionEsperada, ctx, async (viaje, ahora) => {
+  iniciar(tripId: string, code: string, versionEsperada: VersionEsperada, ctx: Contexto): Promise<Viaje> {
+    return this.ejecutar(tripId, versionEsperada, ctx, async (viaje, ahora) => {
       // Primero se prueba la transición sobre una copia: si no es válida, no se gasta el QR.
       Viaje.reconstituir(viaje.toProps()).iniciar(ctx.actor, ahora);
 
-      const resultado = await this.validadorCodigo.validarYConsumir(viaje.id, codigo, ctx.idCorrelacion);
+      const resultado = await this.validadorCodigo.validarYConsumir(viaje.id, code, ctx.correlationId);
       if (resultado !== 'VALIDO') {
         throw new CodigoVerificacionInvalidoError();
       }
@@ -113,17 +122,17 @@ export class ViajesService {
     });
   }
 
-  finalizar(viajeId: string, datos: DatosFinalizacion, versionEsperada: VersionEsperada, ctx: Contexto): Promise<Viaje> {
-    return this.ejecutar(viajeId, versionEsperada, ctx, (viaje, ahora) => viaje.finalizar(ctx.actor, datos, ahora));
+  finalizar(tripId: string, datos: DatosFinalizacion, versionEsperada: VersionEsperada, ctx: Contexto): Promise<Viaje> {
+    return this.ejecutar(tripId, versionEsperada, ctx, (viaje, ahora) => viaje.finalizar(ctx.actor, datos, ahora));
   }
 
   cancelar(
-    viajeId: string,
+    tripId: string,
     solicitud: SolicitudCancelacion,
     versionEsperada: VersionEsperada,
     ctx: Contexto,
   ): Promise<Viaje> {
-    return this.ejecutar(viajeId, versionEsperada, ctx, (viaje, ahora) =>
+    return this.ejecutar(tripId, versionEsperada, ctx, (viaje, ahora) =>
       viaje.cancelar(ctx.actor, solicitud, ahora, this.config),
     );
   }
@@ -133,32 +142,32 @@ export class ViajesService {
    * leer → verificar If-Match → aplicar la acción → guardar viaje y evento juntos, con control de versión.
    */
   private async ejecutar(
-    viajeId: string,
+    tripId: string,
     versionEsperada: VersionEsperada,
     ctx: Contexto,
-    accion: (viaje: Viaje, ahora: Date) => void | Promise<void>,
+    action: (viaje: Viaje, ahora: Date) => void | Promise<void>,
   ): Promise<Viaje> {
-    const viaje = await this.repositorio.buscarPorId(viajeId);
+    const viaje = await this.repositorio.buscarPorId(tripId);
     if (!viaje) {
-      throw new ViajeNoEncontradoError(viajeId);
+      throw new ViajeNoEncontradoError(tripId);
     }
     const versionLeida = viaje.version;
     if (versionEsperada !== undefined && versionEsperada !== versionLeida) {
       throw new PrecondicionFallidaError(versionEsperada, versionLeida);
     }
 
-    await accion(viaje, this.reloj.ahora());
-    await this.repositorio.actualizar(viaje, versionLeida, [eventoDeUltimaTransicion(viaje, ctx.idCorrelacion)]);
+    await action(viaje, this.reloj.ahora());
+    await this.repositorio.actualizar(viaje, versionLeida, [eventoDeUltimaTransicion(viaje, ctx.correlationId)]);
     return viaje;
   }
 
   private puedeVer(viaje: Viaje, actor: Actor): boolean {
-    const { clienteId, conductorId } = viaje.toProps();
-    switch (actor.rol) {
-      case Rol.CLIENTE:
-        return actor.id === clienteId;
-      case Rol.CONDUCTOR:
-        return actor.id === conductorId;
+    const { clientId, driverId } = viaje.toProps();
+    switch (actor.role) {
+      case Rol.CLIENT:
+        return actor.id === clientId;
+      case Rol.DRIVER:
+        return actor.id === driverId;
       default:
         return true;
     }

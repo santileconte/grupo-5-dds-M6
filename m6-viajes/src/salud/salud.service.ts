@@ -7,20 +7,20 @@ import { BANDEJA_DE_SALIDA, BandejaDeSalida, PUBLICADOR_EVENTOS, PublicadorEvent
 import { POOL_POSTGRES } from '../viajes/infraestructura/postgres/conexion';
 import { PublicadorEventosRabbitMQ } from '../viajes/infraestructura/publicador-eventos.rabbitmq';
 
-export type EstadoGeneral = 'OK' | 'DEGRADADO' | 'ERROR';
+export type EstadoGeneral = 'OK' | 'DEGRADED' | 'ERROR';
 
 export interface EstadoComponente {
-  estado: 'OK' | 'ERROR' | 'NO_CONFIGURADO';
-  latenciaMs?: number;
-  detalle?: string;
+  status: 'OK' | 'ERROR' | 'NOT_CONFIGURED';
+  latencyMs?: number;
+  detail?: string;
 }
 
 export interface InformeSalud {
-  estado: EstadoGeneral;
+  status: EstadoGeneral;
   version: string;
-  activoDesde: string;
-  componentes: Record<'postgres' | 'rabbitmq' | 'redis', EstadoComponente>;
-  bandejaDeSalida: { pendientes: number; antiguedadMaximaSegundos: number } | null;
+  upSince: string;
+  components: Record<'postgres' | 'rabbitmq' | 'redis', EstadoComponente>;
+  outbox: { pending: number; oldestPendingSeconds: number } | null;
 }
 
 /** Cuánto se espera a cada componente antes de considerarlo caído. */
@@ -47,7 +47,7 @@ const VERSION = (() => {
  */
 @Injectable()
 export class SaludService {
-  private readonly activoDesde = new Date().toISOString();
+  private readonly upSince = new Date().toISOString();
 
   constructor(
     @Inject(POOL_POSTGRES) private readonly pool: Pool | null,
@@ -57,7 +57,7 @@ export class SaludService {
   ) {}
 
   async informe(): Promise<InformeSalud> {
-    const [postgres, rabbitmq, redis, bandejaDeSalida] = await Promise.all([
+    const [postgres, rabbitmq, redis, outbox] = await Promise.all([
       this.pool
         ? verificar(() => this.pool!.query('SELECT 1'))
         : noConfigurado('PERSISTENCIA=memoria'),
@@ -68,26 +68,26 @@ export class SaludService {
       this.resumenBandeja(),
     ]);
 
-    let estado: EstadoGeneral = 'OK';
-    if (rabbitmq.estado === 'ERROR' || redis.estado === 'ERROR') estado = 'DEGRADADO';
-    if (bandejaDeSalida && bandejaDeSalida.antiguedadMaximaSegundos > ANTIGUEDAD_MAXIMA_EVENTOS_S) estado = 'DEGRADADO';
-    if (postgres.estado === 'ERROR') estado = 'ERROR';
+    let status: EstadoGeneral = 'OK';
+    if (rabbitmq.status === 'ERROR' || redis.status === 'ERROR') status = 'DEGRADED';
+    if (outbox && outbox.oldestPendingSeconds > ANTIGUEDAD_MAXIMA_EVENTOS_S) status = 'DEGRADED';
+    if (postgres.status === 'ERROR') status = 'ERROR';
 
     return {
-      estado,
+      status,
       version: VERSION,
-      activoDesde: this.activoDesde,
-      componentes: { postgres, rabbitmq, redis },
-      bandejaDeSalida,
+      upSince: this.upSince,
+      components: { postgres, rabbitmq, redis },
+      outbox,
     };
   }
 
-  private async resumenBandeja(): Promise<InformeSalud['bandejaDeSalida']> {
+  private async resumenBandeja(): Promise<InformeSalud['outbox']> {
     try {
       const { cantidad, masAntiguo } = await conTimeout(this.bandeja.resumenPendientes());
       return {
-        pendientes: cantidad,
-        antiguedadMaximaSegundos: masAntiguo ? Math.max(0, Math.round((Date.now() - masAntiguo.getTime()) / 1000)) : 0,
+        pending: cantidad,
+        oldestPendingSeconds: masAntiguo ? Math.max(0, Math.round((Date.now() - masAntiguo.getTime()) / 1000)) : 0,
       };
     } catch {
       return null; // si la base no responde ya lo informa el componente postgres
@@ -99,16 +99,16 @@ async function verificar(chequeo: () => Promise<unknown>): Promise<EstadoCompone
   const inicio = Date.now();
   try {
     await conTimeout(chequeo());
-    return { estado: 'OK', latenciaMs: Date.now() - inicio };
+    return { status: 'OK', latencyMs: Date.now() - inicio };
   } catch (error) {
     // Sin credenciales: se borra cualquier "usuario:clave@" que venga en el mensaje del error.
-    const detalle = String(error instanceof Error ? error.message : error).replace(/\/\/[^@\s]*@/g, '//***@');
-    return { estado: 'ERROR', latenciaMs: Date.now() - inicio, detalle: detalle.slice(0, 200) };
+    const detail = String(error instanceof Error ? error.message : error).replace(/\/\/[^@\s]*@/g, '//***@');
+    return { status: 'ERROR', latencyMs: Date.now() - inicio, detail: detail.slice(0, 200) };
   }
 }
 
-function noConfigurado(detalle: string): Promise<EstadoComponente> {
-  return Promise.resolve({ estado: 'NO_CONFIGURADO', detalle });
+function noConfigurado(detail: string): Promise<EstadoComponente> {
+  return Promise.resolve({ status: 'NOT_CONFIGURED', detail });
 }
 
 function conTimeout<T>(promesa: Promise<T>): Promise<T> {

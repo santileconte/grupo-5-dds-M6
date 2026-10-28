@@ -15,10 +15,10 @@ export class PublicadorEventosEnLog implements PublicadorEventos {
     this.publicados.push(evento);
     // Con LOG_FORMATO=json, cada campo queda separado y se puede filtrar (por ejemplo por viajeId).
     this.logger.log({
-      mensaje: `Evento ${evento.tipo} (${routingKey})`,
-      idCorrelacion: evento.idCorrelacion,
-      viajeId: evento.datos.viajeId,
-      idEvento: evento.idEvento,
+      message: `Evento ${evento.eventType} (${routingKey})`,
+      correlationId: evento.correlationId,
+      tripId: evento.payload.tripId,
+      eventId: evento.eventId,
       evento,
     });
   }

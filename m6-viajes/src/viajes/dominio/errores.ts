@@ -5,44 +5,44 @@ import { AccionViaje, EstadoViaje, MotivoCancelacion, Rol } from './tipos';
  * a la respuesta problem+json definida en el contrato OpenAPI.
  */
 export abstract class ErrorDominio extends Error {
-  abstract readonly codigo: string;
+  abstract readonly code: string;
 }
 
 /** 409: la acción no es válida en el estado actual (RF-6.1). */
 export class TransicionInvalidaError extends ErrorDominio {
-  readonly codigo = 'TRANSICION_INVALIDA';
+  readonly code = 'INVALID_STATE_TRANSITION';
   constructor(
-    readonly estadoActual: EstadoViaje,
-    readonly accion: AccionViaje,
+    readonly currentState: EstadoViaje,
+    readonly action: AccionViaje,
   ) {
-    super(`No se puede ejecutar ${accion} sobre un viaje en estado ${estadoActual}`);
+    super(`No se puede ejecutar ${action} sobre un viaje en estado ${currentState}`);
   }
 }
 
 /** 403: el actor no tiene permitido ejecutar la acción sobre este viaje. */
 export class AccionNoPermitidaError extends ErrorDominio {
-  readonly codigo = 'PROHIBIDO';
+  readonly code = 'FORBIDDEN';
   constructor(
-    readonly rol: Rol,
-    readonly accion: AccionViaje,
+    readonly role: Rol,
+    readonly action: AccionViaje,
     razon: string,
   ) {
-    super(`${rol} no puede ejecutar ${accion}: ${razon}`);
+    super(`${role} no puede ejecutar ${action}: ${razon}`);
   }
 }
 
 /** 422: el motivo de cancelación no corresponde al rol o todavía no aplica. */
 export class MotivoNoPermitidoError extends ErrorDominio {
-  readonly codigo = 'MOTIVO_NO_PERMITIDO';
+  readonly code = 'REASON_NOT_ALLOWED';
   constructor(
-    readonly motivo: MotivoCancelacion,
+    readonly reason: MotivoCancelacion,
     razon: string,
   ) {
-    super(`Motivo ${motivo} no permitido: ${razon}`);
+    super(`Motivo ${reason} no permitido: ${razon}`);
   }
 }
 
 /** 400: datos de entrada inválidos para la acción. */
 export class DatosInvalidosError extends ErrorDominio {
-  readonly codigo = 'VALIDACION';
+  readonly code = 'VALIDATION';
 }

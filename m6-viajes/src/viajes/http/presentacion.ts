@@ -1,47 +1,50 @@
-import { TransicionViaje, Ubicacion } from '../dominio/tipos';
+import { TransicionViaje } from '../dominio/tipos';
 import { Viaje } from '../dominio/viaje';
 
 // Convierte las entidades del dominio al JSON que define el contrato OpenAPI.
 
 const iso = (fecha: Date | null) => (fecha ? fecha.toISOString() : null);
 
-const ubicacion = (u: Ubicacion) => ({
-  latitud: u.latitud,
-  longitud: u.longitud,
-  ...(u.direccion !== undefined && { direccion: u.direccion }),
-});
-
 export function viajeAJson(viaje: Viaje) {
   const v = viaje.toProps();
   return {
     id: v.id,
-    solicitudId: v.solicitudId,
-    asignacionId: v.asignacionId,
-    reservaId: v.reservaId ?? null,
-    clienteId: v.clienteId,
-    conductorId: v.conductorId,
-    vehiculoId: v.vehiculoId,
-    tipoVehiculo: v.tipoVehiculo,
-    origen: ubicacion(v.origen),
-    destino: ubicacion(v.destino),
-    estado: v.estado,
+    requestId: v.requestId,
+    reservationId: v.reservationId ?? null,
+    clientId: v.clientId,
+    driverId: v.driverId,
+    vehicleId: v.vehicleId,
+    vehicleType: v.vehicleType,
+    originLatitude: v.originLatitude,
+    originLongitude: v.originLongitude,
+    destinationLatitude: v.destinationLatitude,
+    destinationLongitude: v.destinationLongitude,
+    ...(v.originAddress !== undefined && { originAddress: v.originAddress }),
+    ...(v.destinationAddress !== undefined && { destinationAddress: v.destinationAddress }),
+    state: v.state,
     version: v.version,
-    creadoEn: iso(v.creadoEn),
-    arriboEn: iso(v.arriboEn),
-    iniciadoEn: iso(v.iniciadoEn),
-    finalizadoEn: iso(v.finalizadoEn),
-    canceladoEn: iso(v.canceladoEn),
-    cierre: v.cierre && {
-      distanciaRecorridaMetros: v.cierre.distanciaRecorridaMetros,
-      duracionSegundos: v.cierre.duracionSegundos,
-      ...(v.cierre.ubicacionFinal && { ubicacionFinal: ubicacion(v.cierre.ubicacionFinal) }),
+    createdAt: iso(v.createdAt),
+    // Momento de la última transición (el Trip del Grupo 12 también expone updatedAt).
+    updatedAt: iso(v.history[v.history.length - 1].occurredAt),
+    arrivedAt: iso(v.arrivedAt),
+    startedAt: iso(v.startedAt),
+    completedAt: iso(v.completedAt),
+    cancelledAt: iso(v.cancelledAt),
+    // Mismos campos que el Trip del Grupo 12; `closure` conserva el detalle (segundos y ubicación final).
+    distanceKm: v.closure?.distanceKm ?? null,
+    durationMinutes: v.closure ? Math.round(v.closure.durationSeconds / 60) : null,
+    closure: v.closure && {
+      distanceKm: v.closure.distanceKm,
+      durationSeconds: v.closure.durationSeconds,
+      ...(v.closure.finalLatitude !== undefined && { finalLatitude: v.closure.finalLatitude }),
+      ...(v.closure.finalLongitude !== undefined && { finalLongitude: v.closure.finalLongitude }),
     },
-    cancelacion: v.cancelacion && {
-      canceladoPor: v.cancelacion.canceladoPor,
-      motivo: v.cancelacion.motivo,
-      ...(v.cancelacion.detalle !== undefined && { detalle: v.cancelacion.detalle }),
-      estadoAlCancelar: v.cancelacion.estadoAlCancelar,
-      requiereRedespacho: v.cancelacion.requiereRedespacho,
+    cancellation: v.cancellation && {
+      cancelledBy: v.cancellation.cancelledBy,
+      reason: v.cancellation.reason,
+      ...(v.cancellation.detail !== undefined && { detail: v.cancellation.detail }),
+      previousState: v.cancellation.previousState,
+      requiresRedispatch: v.cancellation.requiresRedispatch,
     },
   };
 }
@@ -50,27 +53,28 @@ export function resumenAJson(viaje: Viaje) {
   const v = viaje.toProps();
   return {
     id: v.id,
-    estado: v.estado,
-    tipoVehiculo: v.tipoVehiculo,
-    clienteId: v.clienteId,
-    conductorId: v.conductorId,
-    ...(v.origen.direccion !== undefined && { direccionOrigen: v.origen.direccion }),
-    ...(v.destino.direccion !== undefined && { direccionDestino: v.destino.direccion }),
-    creadoEn: iso(v.creadoEn),
-    finalizadoEn: iso(v.finalizadoEn),
-    distanciaRecorridaMetros: v.cierre?.distanciaRecorridaMetros ?? null,
+    state: v.state,
+    vehicleType: v.vehicleType,
+    clientId: v.clientId,
+    driverId: v.driverId,
+    ...(v.originAddress !== undefined && { originAddress: v.originAddress }),
+    ...(v.destinationAddress !== undefined && { destinationAddress: v.destinationAddress }),
+    createdAt: iso(v.createdAt),
+    completedAt: iso(v.completedAt),
+    distanceKm: v.closure?.distanceKm ?? null,
+    durationMinutes: v.closure ? Math.round(v.closure.durationSeconds / 60) : null,
   };
 }
 
 export function transicionAJson(t: TransicionViaje) {
   return {
-    secuencia: t.secuencia,
-    desde: t.desde,
-    hacia: t.hacia,
-    accion: t.accion,
-    actor: { rol: t.actor.rol, id: t.actor.id },
-    ocurridoEn: t.ocurridoEn.toISOString(),
-    ...(t.motivo !== undefined && { motivo: t.motivo }),
-    ...(t.detalle !== undefined && { detalle: t.detalle }),
+    sequence: t.sequence,
+    from: t.from,
+    to: t.to,
+    action: t.action,
+    actor: { role: t.actor.role, id: t.actor.id },
+    occurredAt: t.occurredAt.toISOString(),
+    ...(t.reason !== undefined && { reason: t.reason }),
+    ...(t.detail !== undefined && { detail: t.detail }),
   };
 }

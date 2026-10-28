@@ -36,11 +36,11 @@ export class PublicadorEventosRabbitMQ implements PublicadorEventos, OnApplicati
         {
           persistent: true,
           contentType: 'application/json',
-          messageId: evento.idEvento,
-          correlationId: evento.idCorrelacion,
-          type: evento.tipo,
-          appId: evento.productor,
-          timestamp: Math.floor(Date.parse(evento.ocurridoEn) / 1000),
+          messageId: evento.eventId,
+          correlationId: evento.correlationId,
+          type: evento.eventType,
+          appId: evento.producer,
+          timestamp: Math.floor(Date.parse(evento.occurredAt) / 1000),
         },
         (error) => (error ? rechazar(error) : resolver()),
       );
@@ -48,7 +48,7 @@ export class PublicadorEventosRabbitMQ implements PublicadorEventos, OnApplicati
     await conTimeout(confirmado, this.timeoutMs, 'RabbitMQ no confirmó la publicación a tiempo');
   }
 
-  /** Para /salud/detalle: conecta si hace falta y falla si RabbitMQ no responde a tiempo. */
+  /** Para /health/details: conecta si hace falta y falla si RabbitMQ no responde a tiempo. */
   async verificarConexion(): Promise<void> {
     await this.obtenerCanal();
   }
@@ -89,10 +89,10 @@ export class PublicadorEventosRabbitMQ implements PublicadorEventos, OnApplicati
   }
 }
 
-function conTimeout<T>(promesa: Promise<T>, ms: number, mensaje: string): Promise<T> {
+function conTimeout<T>(promesa: Promise<T>, ms: number, message: string): Promise<T> {
   let temporizador: NodeJS.Timeout;
   const limite = new Promise<never>((_, rechazar) => {
-    temporizador = setTimeout(() => rechazar(new Error(mensaje)), ms);
+    temporizador = setTimeout(() => rechazar(new Error(message)), ms);
   });
   return Promise.race([promesa, limite]).finally(() => clearTimeout(temporizador));
 }

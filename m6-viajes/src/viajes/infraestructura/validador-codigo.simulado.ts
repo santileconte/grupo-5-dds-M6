@@ -9,15 +9,15 @@ import { ResultadoValidacionCodigo, ValidadorCodigoVerificacion } from '../aplic
 export class ValidadorCodigoSimulado implements ValidadorCodigoVerificacion {
   private readonly consumidos = new Set<string>();
 
-  static codigoPara(viajeId: string): string {
-    return `QR-${viajeId}`;
+  static codigoPara(tripId: string): string {
+    return `QR-${tripId}`;
   }
 
-  async validarYConsumir(viajeId: string, codigo: string): Promise<ResultadoValidacionCodigo> {
-    if (codigo !== ValidadorCodigoSimulado.codigoPara(viajeId) || this.consumidos.has(viajeId)) {
+  async validarYConsumir(tripId: string, code: string): Promise<ResultadoValidacionCodigo> {
+    if (code !== ValidadorCodigoSimulado.codigoPara(tripId) || this.consumidos.has(tripId)) {
       return 'INVALIDO';
     }
-    this.consumidos.add(viajeId);
+    this.consumidos.add(tripId);
     return 'VALIDO';
   }
 }

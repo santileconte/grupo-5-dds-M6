@@ -20,22 +20,22 @@ export class CorrelacionMiddleware implements NestMiddleware {
 
   use(pedido: PedidoConContexto, respuesta: Response, siguiente: NextFunction): void {
     const recibido = pedido.header(HEADER);
-    pedido.idCorrelacion = recibido && FORMATO_VALIDO.test(recibido) ? recibido : randomUUID();
-    respuesta.setHeader('X-Correlation-Id', pedido.idCorrelacion);
+    pedido.correlationId = recibido && FORMATO_VALIDO.test(recibido) ? recibido : randomUUID();
+    respuesta.setHeader('X-Correlation-Id', pedido.correlationId);
 
-    const contexto = { idCorrelacion: pedido.idCorrelacion };
+    const contexto = { correlationId: pedido.correlationId };
     const inicio = process.hrtime.bigint();
     respuesta.on('finish', () => {
       // Los health checks se consultan cada pocos segundos: no se registran para no llenar el log.
-      if (pedido.path.startsWith('/salud')) return;
+      if (pedido.path.startsWith('/health')) return;
       contextoPedido.ejecutar(contexto, () =>
         this.logger.log({
-          mensaje: `${pedido.method} ${pedido.path} ${respuesta.statusCode}`,
+          message: `${pedido.method} ${pedido.path} ${respuesta.statusCode}`,
           metodo: pedido.method,
           ruta: pedido.path,
-          estado: respuesta.statusCode,
+          status: respuesta.statusCode,
           duracionMs: Number((process.hrtime.bigint() - inicio) / 1_000_000n),
-          rol: pedido.actor?.rol,
+          role: pedido.actor?.role,
         }),
       );
     });
